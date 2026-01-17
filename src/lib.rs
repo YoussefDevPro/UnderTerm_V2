@@ -1,12 +1,12 @@
 use rustix::fd::AsFd;
 use rustix::fd::BorrowedFd;
 use rustix::stdio;
-use rustix::termios::ControlModes;
-use rustix::termios::Termios;
-use rustix::termios::Winsize;
 use rustix::termios::tcgetattr;
 use rustix::termios::tcgetwinsize;
 use rustix::termios::tcsetattr;
+use rustix::termios::ControlModes;
+use rustix::termios::Termios;
+use rustix::termios::Winsize;
 use rustix::termios::{InputModes, LocalModes, OptionalActions, OutputModes};
 
 use signal_hook::consts::SIGWINCH;
@@ -81,16 +81,14 @@ impl Rael {
         });
     }
 
-    pub fn update_size(&mut self) -> Result<(), rustix::io::Errno> {
+    pub fn update_wsize(&mut self) -> Result<(), rustix::io::Errno> {
         if RESIZED.swap(false, Ordering::Relaxed) {
-            let ws = tcgetwinsize(stdio::stdout().as_fd())?;
-            self.widht = ws.ws_col;
-            self.height = ws.ws_row * 2;
+            let _ = self.set_wsize(stdio::stdout().as_fd());
         }
         Ok(())
     }
 
-    fn set_wsize(&mut self, fd: impl AsFd) -> Result<(), rustix::io::Errno> {
+    pub fn set_wsize(&mut self, fd: impl AsFd) -> Result<(), rustix::io::Errno> {
         let ws: Winsize = tcgetwinsize(fd.as_fd())?;
         self.widht = ws.ws_col;
         self.height = ws.ws_row * 2;
