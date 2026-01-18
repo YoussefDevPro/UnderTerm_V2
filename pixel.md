@@ -31,3 +31,12 @@ RRRRRGGGGGGBBBBB
 0101
 0011
 0001
+
+alr alr, so i have to add a Z buffer atleast, so we can know if the pixel has higher or lower z value 
+alr, so i have to use the most optimized way, uh, we can use 2 bits for each pixel, hmmmmmm
+4 is not enough i think, maybe 4 ? 15 seems as a reasonable amount of z index
+here is the final result of Rael (the thing that has all the stuff)
+196712 bytes = 196,712 KB  
+i just raelised that Rael has only 52 bytes alone, and now a whoping 19712 bytes after adding two screens
+
+        

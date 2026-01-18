@@ -11,9 +11,16 @@ use rustix::termios::{InputModes, LocalModes, OptionalActions, OutputModes};
 
 use signal_hook::consts::SIGWINCH;
 use signal_hook::iterator::Signals;
+use std::process::exit;
 use std::thread;
 
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use std::io::{self, stdout, Write};
+
+mod screen;
+
+pub use crate::lib::screen::*;
 
 static RESIZED: AtomicBool = AtomicBool::new(false);
 
@@ -21,8 +28,11 @@ static RESIZED: AtomicBool = AtomicBool::new(false);
 pub struct Rael {
     pub widht: u16,
     pub height: u16,
+    previous_screen: Option<Old_Screen>,
+    pub screen: Screen,
     fd: rustix::fd::BorrowedFd<'static>,
     original: Termios,
+    alt: AltScreen,
 }
 
 impl Default for Rael {
@@ -50,7 +60,14 @@ impl Drop for Rael {
 impl Rael {
     pub fn new() -> Self {
         let fd: BorrowedFd = stdio::stdin();
-        let mut original: Termios = tcgetattr(fd).unwrap();
+        let termioss = tcgetattr(fd);
+        let mut original: Termios = match termioss {
+            Ok(v) => v,
+            Err(e) => {
+                println!("something wrong happened\n{}", e);
+                exit(0);
+            }
+        };
         original
             .local_modes
             .remove(LocalModes::ICANON | LocalModes::ISIG | LocalModes::IEXTEN | LocalModes::ECHO);
@@ -68,6 +85,9 @@ impl Rael {
             height: size.ws_row * 2,
             fd,
             original,
+            screen: Screen::new(),
+            previous_screen: None,
+            alt: AltScreen::enter(),
         }
     }
 
@@ -84,6 +104,7 @@ impl Rael {
     pub fn update_wsize(&mut self) -> Result<(), rustix::io::Errno> {
         if RESIZED.swap(false, Ordering::Relaxed) {
             let _ = self.set_wsize(stdio::stdout().as_fd());
+            self.previous_screen = None;
         }
         Ok(())
     }
@@ -93,5 +114,36 @@ impl Rael {
         self.widht = ws.ws_col;
         self.height = ws.ws_row * 2;
         Ok(())
+    }
+
+    pub fn render(&self) {
+        print!(
+            "{}",
+            self.screen
+                .render(self.widht, self.height, self.previous_screen)
+        );
+        stdout().flush().unwrap();
+    }
+
+    pub fn clear(&mut self) {
+        self.previous_screen = self.screen.clear();
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AltScreen;
+
+impl AltScreen {
+    pub fn enter() -> Self {
+        print!("\x1b[?1049h\x1b[?25l");
+        let _ = io::stdout().flush();
+        Self
+    }
+}
+
+impl Drop for AltScreen {
+    fn drop(&mut self) {
+        print!("\x1b[?25h\x1b[?1049l");
+        let _ = io::stdout().flush();
     }
 }
