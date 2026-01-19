@@ -13,13 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          override: true
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --verbose --release
 
       - name: Run tests
         run: cargo test --verbose
