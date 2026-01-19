@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install Rust toolchain
-        uses: https://code.forgejo.org/theoparis/rust-toolchain@main
+        uses: https://code.forgejo.org/theoparis/rust-toolchain@master
         with:
           toolchain: stable
 
