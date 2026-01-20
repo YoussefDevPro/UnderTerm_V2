@@ -16,11 +16,14 @@ use std::thread;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use std::io::{self, stdout, Write};
+use std::io::{stdout, Write};
 
+mod alt_screen;
+mod mouse;
 mod screen;
 
-pub use crate::lib::screen::*;
+pub use crate::rael::alt_screen::*;
+pub use crate::rael::screen::*;
 
 static RESIZED: AtomicBool = AtomicBool::new(false);
 
@@ -28,7 +31,7 @@ static RESIZED: AtomicBool = AtomicBool::new(false);
 pub struct Rael {
     pub widht: u16,
     pub height: u16,
-    previous_screen: Option<Old_Screen>,
+    previous_screen: Option<OldScreen>,
     pub screen: Screen,
     fd: rustix::fd::BorrowedFd<'static>,
     original: Termios,
@@ -127,23 +130,5 @@ impl Rael {
 
     pub fn clear(&mut self) {
         self.previous_screen = self.screen.clear();
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AltScreen;
-
-impl AltScreen {
-    pub fn enter() -> Self {
-        print!("\x1b[?1049h\x1b[?25l");
-        let _ = io::stdout().flush();
-        Self
-    }
-}
-
-impl Drop for AltScreen {
-    fn drop(&mut self) {
-        print!("\x1b[?25h\x1b[?1049l");
-        let _ = io::stdout().flush();
     }
 }

@@ -1,31 +1,38 @@
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Color {
-    // 5 red | 6 green | 5 blue
-    pub value: u16,
+    r: u8,
+    g: u8,
+    b: u8,
 }
 
 impl Color {
     pub fn new(r: u8, g: u8, b: u8) -> Self {
-        Color {
-            value: u16::from(r >> 3) << 11 | u16::from(g >> 2) << 5 | u16::from(b >> 3),
-        }
-    }
-
-    pub fn r(&self) -> u8 {
-        let n: u8 = (self.value >> 11).try_into().unwrap();
-        (n << 3) | (n >> 2)
-    }
-
-    pub fn g(&self) -> u8 {
-        let n: u8 = ((self.value >> 5) & 0x3f).try_into().unwrap();
-        (n << 2) | (n >> 4)
-    }
-
-    pub fn b(&self) -> u8 {
-        let n: u8 = (self.value & 0x1f).try_into().unwrap();
-        (n << 3) | (n >> 2)
+        Color { r, g, b }
     }
 }
+
+//impl Color {
+//    pub fn new(r: u8, g: u8, b: u8) -> Self {
+//        Color {
+//            value: u16::from(r >> 3) << 11 | u16::from(g >> 2) << 5 | u16::from(b >> 3),
+//        }
+//    }
+//
+//    pub fn r(&self) -> u8 {
+//        let n: u8 = (self.value >> 11).try_into().unwrap();
+//        (n << 3) | (n >> 2)
+//    }
+//
+//    pub fn g(&self) -> u8 {
+//        let n: u8 = ((self.value >> 5) & 0x3f).try_into().unwrap();
+//        (n << 2) | (n >> 4)
+//    }
+//
+//    pub fn b(&self) -> u8 {
+//        let n: u8 = (self.value & 0x1f).try_into().unwrap();
+//        (n << 3) | (n >> 2)
+//    }
+//}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Pixel {
@@ -46,7 +53,7 @@ pub struct Screen {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Old_Screen {
+pub struct OldScreen {
     pub pixels: [[Pixel; 256]; 256],
 }
 
@@ -75,7 +82,7 @@ impl Screen {
         };
         let z_index = self.z_buffer[y as usize][usize::from(x) >> 1];
         let current_z: u8 = if x % 2 == 1 {
-            z_index & 0xf
+            z_index & 0b1111
         } else {
             z_index >> 4
         };
@@ -88,8 +95,8 @@ impl Screen {
         }
     }
 
-    pub(crate) fn clear(&mut self) -> Option<Old_Screen> {
-        let old = Old_Screen {
+    pub(crate) fn clear(&mut self) -> Option<OldScreen> {
+        let old = OldScreen {
             pixels: self.pixels,
         };
         self.pixels = [[Pixel::new(0); 256]; 256];
@@ -97,7 +104,7 @@ impl Screen {
         Some(old)
     }
 
-    pub(crate) fn render(&self, widht: u16, height: u16, old: Option<Old_Screen>) -> String {
+    pub(crate) fn render(&self, widht: u16, height: u16, old: Option<OldScreen>) -> String {
         let mut buffer = String::new();
         for y in (0..height).step_by(2) {
             for x in 0..widht {
@@ -108,35 +115,25 @@ impl Screen {
                 } else {
                     top
                 };
-                if !old.is_none() {
-                    let old_top = old.unwrap().pixels[y as usize][x as usize].value;
-                    let old_bottom = if y + 1 < height {
-                        old.unwrap().pixels[(y + 1) as usize][x as usize].value
+                if let Some(old_screen) = old {
+                    let otop = old_screen.pixels[y as usize][x as usize].value;
+                    let obottom = if y + 1 < height {
+                        old_screen.pixels[(y + 1) as usize][x as usize].value
                     } else {
-                        old_top
+                        otop
                     };
-                    if top == old_top && bottom == old_bottom {
+                    if top == otop && bottom == obottom {
                         continue;
                     }
                 }
                 let top = self.colors[top as usize];
                 let bottom = self.colors[bottom as usize];
-                if top.value == bottom.value {
-                    buffer.push_str(&format!(
-                        "\u{1b}[38;2;{};{};{}m█",
-                        top.r(),
-                        top.g(),
-                        top.b()
-                    ));
+                if top == bottom {
+                    buffer.push_str(&format!("\u{1b}[38;2;{};{};{}m█", top.r, top.g, top.b));
                 } else {
                     buffer.push_str(&format!(
                         "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m▄",
-                        top.r(),
-                        top.g(),
-                        top.b(),
-                        bottom.r(),
-                        bottom.g(),
-                        bottom.b()
+                        top.r, top.g, top.b, bottom.r, bottom.g, bottom.b
                     ));
                 }
             }
