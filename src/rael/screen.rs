@@ -1,4 +1,6 @@
 use crate::rael::MAX;
+use rayon::prelude::*;
+use std::fmt::Write;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Color {
@@ -82,7 +84,10 @@ impl Screen {
         if z >= 16 {
             z = 15;
         };
-        let z_index = self.z_buffer[y as usize][usize::from(x) >> 1];
+        if x > MAX || y > MAX {
+            return;
+        }
+        let z_index = self.z_buffer[y][x / 2];
         let current_z: u8 = if x % 2 == 1 {
             z_index & 0b1111
         } else {
@@ -92,8 +97,8 @@ impl Screen {
             // do nothing, the pixel is already on the bottom of the other pixel, that mean we cant
             // see it
         } else {
-            self.pixels[y as usize][x as usize].value = self.get_or_insert_color(color);
-            self.z_buffer[y as usize][usize::from(x) >> 1] = z;
+            self.pixels[y][x].value = self.get_or_insert_color(color);
+            self.z_buffer[y][x / 2] = z;
         }
     }
 

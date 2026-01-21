@@ -1,7 +1,4 @@
 use crate::rael::Rael;
-use rustix::fd::AsRawFd;
-use rustix::fd::FromRawFd;
-use rustix::fd::OwnedFd;
 use rustix::io::dup;
 use rustix::io::read;
 use std::io;
@@ -106,7 +103,6 @@ impl Rael {
         let mut buf = [0u8; 32];
         let raw = dup(self.fd.as_fd()).unwrap();
         thread::spawn(move || {
-            println!("entering the thread");
             loop {
                 let n = read(&raw, &mut buf).unwrap();
                 if n == 0 {
