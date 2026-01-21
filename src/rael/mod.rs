@@ -23,9 +23,11 @@ mod mouse;
 mod screen;
 
 pub use crate::rael::alt_screen::*;
+pub use crate::rael::mouse::*;
 pub use crate::rael::screen::*;
 
 static RESIZED: AtomicBool = AtomicBool::new(false);
+pub const MAX: usize = 512;
 
 #[derive(Debug, Clone)]
 pub struct Rael {
@@ -36,6 +38,7 @@ pub struct Rael {
     fd: rustix::fd::BorrowedFd<'static>,
     original: Termios,
     alt: AltScreen,
+    mouse_enabled: bool,
 }
 
 impl Default for Rael {
@@ -54,9 +57,11 @@ impl Drop for Rael {
             .insert(InputModes::ICRNL | InputModes::IXON);
         self.original.output_modes.insert(OutputModes::OPOST);
         self.original.control_modes.insert(ControlModes::CS8);
-        let _ = tcsetattr(self.fd, OptionalActions::Now, &self.original); // enable raw mode
-
-        println!("AS RAEL AS IT GETS!!! \n Muhihi hi hi-")
+        let _ = tcsetattr(self.fd, OptionalActions::Now, &self.original); // enable raw mode //
+                                                                          // EDIT: DISABLE
+        if self.mouse_enabled {
+            print!("\x1b[?1003l\x1b[?1006l");
+        }
     }
 }
 
@@ -91,6 +96,7 @@ impl Rael {
             screen: Screen::new(),
             previous_screen: None,
             alt: AltScreen::enter(),
+            mouse_enabled: false,
         }
     }
 

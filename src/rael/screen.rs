@@ -1,3 +1,5 @@
+use crate::rael::MAX;
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Color {
     r: u8,
@@ -47,22 +49,22 @@ impl Pixel {
 
 #[derive(Debug, Clone)]
 pub struct Screen {
-    pub pixels: [[Pixel; 256]; 256],
+    pub pixels: [[Pixel; MAX]; MAX],
     pub colors: Vec<Color>,
-    pub z_buffer: [[u8; 128]; 256],
+    pub z_buffer: [[u8; MAX / 2]; MAX],
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct OldScreen {
-    pub pixels: [[Pixel; 256]; 256],
+    pub pixels: [[Pixel; MAX]; MAX],
 }
 
 impl Screen {
     pub fn new() -> Self {
         Screen {
-            pixels: [[Pixel::new(0); 256]; 256],
+            pixels: [[Pixel::new(0); MAX]; MAX],
             colors: vec![Color::new(0, 0, 0)],
-            z_buffer: [[0; 128]; 256],
+            z_buffer: [[0; MAX / 2]; MAX],
         }
     }
     // asked da ai to do it bc im lazy
@@ -76,7 +78,7 @@ impl Screen {
         }
     }
 
-    pub fn set_pixel(&mut self, x: u8, y: u8, mut z: u8, color: Color) {
+    pub fn set_pixel(&mut self, x: usize, y: usize, mut z: u8, color: Color) {
         if z >= 16 {
             z = 15;
         };
@@ -99,8 +101,8 @@ impl Screen {
         let old = OldScreen {
             pixels: self.pixels,
         };
-        self.pixels = [[Pixel::new(0); 256]; 256];
-        self.z_buffer = [[0; 128]; 256];
+        self.pixels = [[Pixel::new(0); 512]; 512];
+        self.z_buffer = [[0; 256]; 512];
         Some(old)
     }
 

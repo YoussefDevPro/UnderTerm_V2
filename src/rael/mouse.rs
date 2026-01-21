@@ -1,7 +1,15 @@
 use crate::rael::Rael;
+use rustix::fd::AsRawFd;
+use rustix::fd::FromRawFd;
+use rustix::fd::OwnedFd;
+use rustix::io::dup;
 use rustix::io::read;
 use std::io;
 use std::io::Write;
+use std::os::fd::AsFd;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::channel;
+use std::thread;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseEvent {
@@ -61,7 +69,7 @@ pub fn parse_sgr_mouse(seq: &str) -> Option<MouseEvent> {
     let y: usize = parts[2].parse().ok()?;
 
     // Scroll
-    if b & 64 != 0 {
+    if b & 0b1000000 != 0 {
         let direction = if b & 1 != 0 {
             ScrollDirection::Down
         } else {
@@ -71,7 +79,7 @@ pub fn parse_sgr_mouse(seq: &str) -> Option<MouseEvent> {
     }
 
     // Move
-    if b & 32 != 0 {
+    if b & 0b0100000 != 0 {
         return Some(MouseEvent::Move { x, y });
     }
 
@@ -91,21 +99,28 @@ pub fn parse_sgr_mouse(seq: &str) -> Option<MouseEvent> {
 }
 
 impl Rael {
-    pub fn enable_mouse(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn enable_mouse(&mut self) -> Receiver<MouseEvent> {
+        let (send, recv) = channel::<MouseEvent>();
         print!("\x1b[?1003h\x1b[?1006h");
         let _ = io::stdout().flush();
         let mut buf = [0u8; 32];
-        loop {
-            let n = read(self.fd, &mut buf)?;
-            if n == 0 {
-                continue;
+        let raw = dup(self.fd.as_fd()).unwrap();
+        thread::spawn(move || {
+            println!("entering the thread");
+            loop {
+                let n = read(&raw, &mut buf).unwrap();
+                if n == 0 {
+                    continue;
+                }
+                if let Ok(s) = str::from_utf8(&buf[..n])
+                    && s.contains("\x1b[<")
+                    && let Some(evt) = parse_sgr_mouse(s)
+                {
+                    send.send(evt).unwrap()
+                }
             }
-            if let Ok(s) = str::from_utf8(&buf[..n])
-                && s.contains("\x1b[<")
-                && let Some(evt) = parse_sgr_mouse(s)
-            {
-                println!("{:?}", evt);
-            }
-        }
+        });
+        self.mouse_enabled = true;
+        recv
     }
 }
