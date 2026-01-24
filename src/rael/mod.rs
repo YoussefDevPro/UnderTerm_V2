@@ -1,140 +1,219 @@
-use rustix::fd::AsFd;
-use rustix::fd::BorrowedFd;
-use rustix::stdio;
-use rustix::termios::tcgetattr;
-use rustix::termios::tcgetwinsize;
-use rustix::termios::tcsetattr;
-use rustix::termios::ControlModes;
-use rustix::termios::Termios;
-use rustix::termios::Winsize;
-use rustix::termios::{InputModes, LocalModes, OptionalActions, OutputModes};
+use crossterm::event::{
+    EnableMouseCapture, EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
+};
+use crossterm::{
+    cursor::{Hide, Show},
+    event::EnableFocusChange,
+    execute,
+    terminal::{
+        disable_raw_mode, enable_raw_mode, supports_keyboard_enhancement, window_size,
+        BeginSynchronizedUpdate, DisableLineWrap, EnableLineWrap, EndSynchronizedUpdate,
+        EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
+    },
+};
+use rayon::prelude::*;
+use std::io::{self, Stdout, Write};
 
-use signal_hook::consts::SIGWINCH;
-use signal_hook::iterator::Signals;
-use std::process::exit;
-use std::thread;
+use crate::rael::input::Input;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+mod input;
 
-use std::io::{stdout, Write};
+const MAX: usize = 512;
 
-mod alt_screen;
-mod mouse;
-mod screen;
-
-pub use crate::rael::alt_screen::*;
-pub use crate::rael::mouse::*;
-pub use crate::rael::screen::*;
-
-static RESIZED: AtomicBool = AtomicBool::new(false);
-pub const MAX: usize = 512;
-
-#[derive(Debug, Clone)]
-pub struct Rael {
-    pub widht: u16,
-    pub height: u16,
-    previous_screen: Option<OldScreen>,
-    pub screen: Screen,
-    fd: rustix::fd::BorrowedFd<'static>,
-    original: Termios,
-    alt: AltScreen,
-    mouse_enabled: bool,
+/// RGB color
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub struct Color {
+    /// Red channel (0–255)
+    r: u8,
+    /// Green channel (0–255)
+    g: u8,
+    /// Blue channel (0–255)
+    b: u8,
 }
 
-impl Default for Rael {
-    fn default() -> Self {
-        Self::new()
+impl Color {
+    /// Create a new color from RGB values
+    pub fn new(r: u8, g: u8, b: u8) -> Self {
+        Color { r, g, b }
+    }
+}
+
+/// Main terminal renderer
+pub struct Rael {
+    /// Terminal width
+    pub widht: u16,
+    /// Terminal height (doubled for pixel aspect)
+    pub height: u16,
+    /// Current pixel buffer (stores color indices)
+    pub pixels: [[u8; MAX]; MAX],
+    /// Z-buffer for depth handling
+    pub z_buffer: [[u8; MAX]; MAX],
+    /// List of unique colors used
+    pub colors: Vec<Color>,
+    /// Stdout handle for rendering
+    pub stdout: Stdout,
+    /// Previous frame for diff rendering
+    pub old: [[u8; MAX]; MAX],
+    /// Input handler
+    pub inputs: Input,
+}
+
+impl Rael {
+    /// Initialize Rael and set up terminal
+    ///
+    /// # Parameters
+    /// - `stdout`: terminal output handle
+    /// - `title`: window title
+    ///
+    /// # Errors
+    /// Returns an error if terminal doesn't support enhanced keyboard protocols
+    pub fn new(mut stdout: Stdout, title: &str) -> Result<Self, io::Error> {
+        if !supports_keyboard_enhancement().unwrap() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Terminal doesn't support Kitty protocols, required for rendering",
+            ));
+        };
+
+        let _ = enable_raw_mode();
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            DisableLineWrap,
+            EnableFocusChange,
+            EnableMouseCapture,
+            SetTitle::<&str>(title),
+            Hide,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::all())
+        )?;
+
+        let win = window_size().unwrap();
+        let reader = EventStream::new();
+
+        Ok(Rael {
+            widht: win.columns,
+            height: win.rows * 2,
+            pixels: [[0; MAX]; MAX],
+            z_buffer: [[0; MAX]; MAX],
+            colors: vec![Color::new(0, 0, 0)],
+            stdout,
+            old: [[1; MAX]; MAX],
+            inputs: Input::new(reader),
+        })
+    }
+
+    /// Get the index of a color, inserting it if new
+    ///
+    /// # Parameters
+    /// - `color`: the color to find or insert
+    ///
+    /// # Returns
+    /// The index of the color in the color palette
+    fn get_or_insert_color(&mut self, color: Color) -> u8 {
+        if let Some(i) = self.colors.par_iter().position_any(|&mraow| mraow == color) {
+            i as u8
+        } else {
+            let i = self.colors.len();
+            self.colors.push(color);
+            i as u8
+        }
+    }
+
+    /// Set a pixel at a specific position with depth and color
+    ///
+    /// # Parameters
+    /// - `x`, `y`: pixel coordinates
+    /// - `z`: depth for z-buffer
+    /// - `color`: pixel color
+    ///
+    /// # Panics
+    /// Panics if `x` or `y` exceeds MAX
+    pub fn set_pixel(&mut self, x: usize, y: usize, z: u8, color: Color) {
+        if x > MAX || y > MAX {
+            panic!("y={y} and x={x}, one of them exceeds MAX:{MAX}");
+        }
+        if self.z_buffer[y][x] <= z {
+            self.pixels[y][x] = self.get_or_insert_color(color);
+            self.z_buffer[y][x] = z;
+        }
+    }
+
+    /// Clear the pixel buffer while saving the previous frame
+    ///
+    /// Use this before rendering a new frame
+    pub fn clear(&mut self) {
+        self.old = self.pixels;
+        self.pixels = [[0; MAX]; MAX];
+        self.z_buffer = [[0; MAX]; MAX];
+    }
+
+    /// Clear all stored colors except black
+    pub fn clear_colors(&mut self) {
+        self.colors = vec![Color::new(0, 0, 0)];
+    }
+
+    /// Render the current frame to the terminal
+    ///
+    /// Only updates pixels that changed since last frame
+    pub async fn render(&mut self) -> io::Result<()> {
+        execute!(self.stdout, BeginSynchronizedUpdate)?;
+        let mut buffer = String::new();
+
+        for y in (0..self.height as usize).step_by(2) {
+            for x in 0..self.widht as usize {
+                buffer.push_str(&format!("\u{1b}[{};{}H", (y + 1).div_ceil(2), x + 1));
+
+                let top = self.pixels[y][x];
+                let bottom = if y + 1 < self.height.into() {
+                    self.pixels[y + 1][x]
+                } else {
+                    top
+                };
+
+                let otop = self.old[y][x];
+                let obottom = if y + 1 < self.height.into() {
+                    self.old[y + 1][x]
+                } else {
+                    otop
+                };
+
+                if top == otop && bottom == obottom {
+                    continue;
+                }
+
+                let top = self.colors[top as usize];
+                let bottom = self.colors[bottom as usize];
+
+                if top == bottom {
+                    buffer.push_str(&format!("\u{1b}[48;2;{};{};{}m ", top.r, top.g, top.b));
+                } else {
+                    buffer.push_str(&format!(
+                        "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m▄",
+                        top.r, top.g, top.b, bottom.r, bottom.g, bottom.b
+                    ));
+                }
+            }
+        }
+
+        execute!(self.stdout, EndSynchronizedUpdate)?;
+        self.stdout.write_all(buffer.as_bytes())?;
+        Ok(())
     }
 }
 
 impl Drop for Rael {
+    /// Restore the terminal to its original state when Rael is dropped
     fn drop(&mut self) {
-        self.original
-            .local_modes
-            .insert(LocalModes::ICANON | LocalModes::ISIG | LocalModes::IEXTEN | LocalModes::ECHO);
-        self.original
-            .input_modes
-            .insert(InputModes::ICRNL | InputModes::IXON);
-        self.original.output_modes.insert(OutputModes::OPOST);
-        self.original.control_modes.insert(ControlModes::CS8);
-        let _ = tcsetattr(self.fd, OptionalActions::Now, &self.original); // enable raw mode //
-                                                                          // EDIT: DISABLE
-        if self.mouse_enabled {
-            print!("\x1b[?1003l\x1b[?1006l");
-        }
-    }
-}
-
-impl Rael {
-    pub fn new() -> Self {
-        let fd: BorrowedFd = stdio::stdin();
-        let termioss = tcgetattr(fd);
-        let mut original: Termios = match termioss {
-            Ok(v) => v,
-            Err(e) => {
-                println!("something wrong happened\n{}", e);
-                exit(0);
-            }
-        };
-        original
-            .local_modes
-            .remove(LocalModes::ICANON | LocalModes::ISIG | LocalModes::IEXTEN | LocalModes::ECHO);
-        original
-            .input_modes
-            .remove(InputModes::ICRNL | InputModes::IXON);
-        original.output_modes.remove(OutputModes::OPOST);
-        original.control_modes.remove(ControlModes::CS8);
-        let _ = tcsetattr(fd, OptionalActions::Now, &original); // enable raw mode
-
-        let size: Winsize = tcgetwinsize(fd).unwrap();
-
-        Rael {
-            widht: size.ws_col,
-            height: size.ws_row * 2,
-            fd,
-            original,
-            screen: Screen::new(),
-            previous_screen: None,
-            alt: AltScreen::enter(),
-            mouse_enabled: false,
-        }
-    }
-
-    pub fn setup_events(&self) {
-        let mut signals = Signals::new([SIGWINCH]).unwrap();
-
-        thread::spawn(move || {
-            for _ in signals.forever() {
-                RESIZED.store(true, Ordering::Relaxed);
-            }
-        });
-    }
-
-    pub fn update_wsize(&mut self) -> Result<(), rustix::io::Errno> {
-        if RESIZED.swap(false, Ordering::Relaxed) {
-            let _ = self.set_wsize(stdio::stdout().as_fd());
-            self.previous_screen = None;
-        }
-        Ok(())
-    }
-
-    pub fn set_wsize(&mut self, fd: impl AsFd) -> Result<(), rustix::io::Errno> {
-        let ws: Winsize = tcgetwinsize(fd.as_fd())?;
-        self.widht = ws.ws_col;
-        self.height = ws.ws_row * 2;
-        Ok(())
-    }
-
-    pub fn render(&self) {
-        print!(
-            "{}",
-            self.screen
-                .render(self.widht, self.height, self.previous_screen)
+        let _ = execute!(
+            self.stdout,
+            PopKeyboardEnhancementFlags,
+            EndSynchronizedUpdate,
+            EnableLineWrap,
+            LeaveAlternateScreen,
+            Show
         );
-        stdout().flush().unwrap();
-    }
-
-    pub fn clear(&mut self) {
-        self.previous_screen = self.screen.clear();
+        let _ = disable_raw_mode();
+        let _ = self.stdout.flush();
     }
 }
