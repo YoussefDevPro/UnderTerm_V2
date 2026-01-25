@@ -25,11 +25,11 @@ const MAX: usize = 512;
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Color {
     /// Red channel (0–255)
-    r: u8,
+    pub r: u8,
     /// Green channel (0–255)
-    g: u8,
+    pub g: u8,
     /// Blue channel (0–255)
-    b: u8,
+    pub b: u8,
 }
 
 impl Color {
@@ -136,6 +136,40 @@ impl Rael {
         if self.z_buffer[y][x] <= z {
             self.pixels[y][x] = self.get_or_insert_color(color);
             self.z_buffer[y][x] = z;
+        }
+    }
+
+    pub fn set_image<const W: usize, const H: usize, const C: usize>(
+        &mut self,
+        pixels: [[u8; W]; H],
+        colors: [Color; C],
+        width: u16,
+        height: u16,
+        pos: (usize, usize, u8),
+    ) {
+        let (ox, oy, oz) = pos;
+
+        for y in 0..H {
+            let ty = oy + y;
+            if ty >= height as usize {
+                continue;
+            }
+
+            for x in 0..W {
+                let tx = ox + x;
+                if tx >= width as usize {
+                    continue;
+                }
+
+                let color_index = pixels[y][x] as usize;
+
+                if color_index >= C {
+                    continue;
+                }
+
+                let color = colors[color_index];
+                self.set_pixel(tx, ty, oz, color);
+            }
         }
     }
 

@@ -39,4 +39,15 @@ here is the final result of Rael (the thing that has all the stuff)
 196712 bytes = 196,712 KB  
 i just raelised that Rael has only 52 bytes alone, and now a whoping 19712 bytes after adding two screens
 
+# aaaaaaah
+
+alr so abt the images, i already did one, but its so unoptimized, anyways, now ima redo it, so first of all, i need to process the images, to get a 
+[[u8; widht]; height] and a Vec<Color>, the files should be preproceded and the files we have to give to it should always have only 255 colors, and we should allow resizing, + we have to make a optimized version of how to add the pixels, a add image function, that chacks if any color in its Vec<Color> is inside the main one, to know the index, and then when adding the pixels, we make sure all of them have the exact color index, that should match the main one, and ofc we check the z index layer to know wheter the pixel should be added or not, the function should look like smt like this:
+rael.set_image(path: &str, x: usize: y:usize, z: u8, widht: u16, height: u16, stretch: bool)
+the pre proccessed file should be smt like 
+pixels: [[u8; widht]; height]
+colors: Vec<Color>
+where u8 in pixels is the index of the color, and we can ignore the part of the image that is outside 512x512
+
         
+
