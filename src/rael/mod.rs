@@ -39,6 +39,12 @@ impl Color {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ImageAsset<const W: usize, const H: usize> {
+    pub pixels: [[u8; W]; H],     // pixel indices into the palette
+    pub colors: &'static [Color], // palette, slice instead of const generic
+}
+
 /// Main terminal renderer
 pub struct Rael {
     /// Terminal width
@@ -139,35 +145,32 @@ impl Rael {
         }
     }
 
-    pub fn set_image<const W: usize, const H: usize, const C: usize>(
+    pub fn set_image<const W: usize, const H: usize>(
         &mut self,
-        pixels: [[u8; W]; H],
-        colors: [Color; C],
-        width: u16,
-        height: u16,
+        image: ImageAsset<W, H>,
         pos: (usize, usize, u8),
     ) {
         let (ox, oy, oz) = pos;
 
         for y in 0..H {
             let ty = oy + y;
-            if ty >= height as usize {
+            if ty >= H {
                 continue;
             }
 
             for x in 0..W {
                 let tx = ox + x;
-                if tx >= width as usize {
+                //if tx >= W {
+                //    continue;
+                //}
+
+                let color_index = image.pixels[y][x] as usize;
+
+                if color_index >= image.colors.len() - 1 {
                     continue;
                 }
 
-                let color_index = pixels[y][x] as usize;
-
-                if color_index >= C {
-                    continue;
-                }
-
-                let color = colors[color_index];
+                let color = image.colors[color_index];
                 self.set_pixel(tx, ty, oz, color);
             }
         }

@@ -2,21 +2,20 @@ mod assets;
 mod underterm;
 
 use rael::*;
-use tokio::time::{sleep, Duration};
+
+use crate::underterm::Map;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
     let mut rael = Rael::new(std::io::stdout(), "Rael Simple Example")?;
+    let mut current_map = Map::Intro;
 
-    rael.set_image(
-        *assets::INTRO_1_PIXELS,
-        *assets::INTRO_1_COLORS,
-        *assets::INTRO_1_WIDTH,
-        *assets::INTRO_1_HEIGHT,
-        (0, 0, 0),
-    );
-    let _ = rael.render().await;
-    let _ = sleep(Duration::from_secs(3)).await;
-
+    loop {
+        current_map = match current_map {
+            Map::Intro => underterm::introduction(&mut rael).await,
+            Map::Menu => underterm::menu(&mut rael).await,
+            Map::Exit => break,
+        }
+    }
     Ok(())
 }
