@@ -63,6 +63,8 @@ pub struct Rael {
     pub old: [[u8; MAX]; MAX],
     /// Input handler
     pub inputs: Input,
+    /// char for custom rendering
+    pub chars: [[char; MAX]; MAX / 2],
 }
 
 impl Rael {
@@ -106,6 +108,7 @@ impl Rael {
             stdout,
             old: [[1; MAX]; MAX],
             inputs: Input::new(reader),
+            chars: [[' '; MAX]; MAX / 2],
         })
     }
 
@@ -135,13 +138,14 @@ impl Rael {
     ///
     /// # Panics
     /// Panics if `x` or `y` exceeds MAX
-    pub fn set_pixel(&mut self, x: usize, y: usize, z: u8, color: Color) {
+    pub fn set_pixel(&mut self, x: usize, y: usize, z: u8, color: Color, char: Option<char>) {
         if x > MAX || y > MAX {
             panic!("y={y} and x={x}, one of them exceeds MAX:{MAX}");
         }
         if self.z_buffer[y][x] <= z {
             self.pixels[y][x] = self.get_or_insert_color(color);
             self.z_buffer[y][x] = z;
+            self.chars[y / 2][x] = char.unwrap_or(' ');
         }
     }
 
@@ -160,10 +164,6 @@ impl Rael {
 
             for x in 0..W {
                 let tx = ox + x;
-                //if tx >= W {
-                //    continue;
-                //}
-
                 let color_index = image.pixels[y][x] as usize;
 
                 if color_index >= image.colors.len() - 1 {
@@ -171,7 +171,7 @@ impl Rael {
                 }
 
                 let color = image.colors[color_index];
-                self.set_pixel(tx, ty, oz, color);
+                self.set_pixel(tx, ty, oz, color, None);
             }
         }
     }
@@ -183,6 +183,7 @@ impl Rael {
         self.old = self.pixels;
         self.pixels = [[0; MAX]; MAX];
         self.z_buffer = [[0; MAX]; MAX];
+        self.chars = [[' '; MAX]; MAX / 2]
     }
 
     /// Clear all stored colors except black
@@ -221,9 +222,19 @@ impl Rael {
 
                 let top = self.colors[top as usize];
                 let bottom = self.colors[bottom as usize];
-
                 if top == bottom {
                     buffer.push_str(&format!("\u{1b}[48;2;{};{};{}m ", top.r, top.g, top.b));
+                } else if self.chars[y / 2][x] != ' ' {
+                    buffer.push_str(&format!(
+                        "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m▄{}",
+                        top.r,
+                        top.g,
+                        top.b,
+                        bottom.r,
+                        bottom.g,
+                        bottom.b,
+                        self.chars[y / 2][x]
+                    ));
                 } else {
                     buffer.push_str(&format!(
                         "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m▄",

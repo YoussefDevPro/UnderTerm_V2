@@ -9,6 +9,7 @@ use crate::underterm::Map;
 async fn main() -> std::io::Result<()> {
     let mut rael = Rael::new(std::io::stdout(), "Rael Simple Example")?;
     let mut current_map = Map::Intro;
+    let _ = rael.render().await;
 
     loop {
         current_map = match current_map {
