@@ -237,6 +237,11 @@ impl Rael {
         self.stdout.write_all(buffer.as_bytes())?;
         Ok(())
     }
+
+    pub fn render_custom(&mut self, string: String) -> io::Result<()> {
+        self.stdout.write_all(string.as_bytes())?;
+        Ok(())
+    }
 }
 
 impl Drop for Rael {

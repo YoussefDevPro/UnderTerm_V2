@@ -6,6 +6,9 @@ use rael::Rael;
 use crate::assets;
 use assets::*;
 
+mod fonts;
+use crate::underterm::fonts::miniwi;
+
 pub enum Map {
     Intro,
     Menu,
@@ -13,14 +16,13 @@ pub enum Map {
 }
 
 pub async fn introduction(rael: &mut Rael) -> Map {
-    let center_w = (rael.widht / 2) - 80;
-    loop {
-        for i in ALL_IMAGES {
-            rael.set_image(*i, (center_w as usize, 0, 0));
-            let _ = rael.render().await;
-            rael.clear();
-            sleep(Duration::from_millis(16));
-        }
+    let center_w = (rael.widht / 2) - 40;
+    for i in ALL_IMAGES {
+        rael.set_image(*i, (center_w as usize, 0, 0));
+        let _ = rael.render().await;
+        let _ = rael.render_custom(miniwi("UNDERTERM", Color::new(255, 255, 255), 80, 40));
+        rael.clear();
+        sleep(Duration::from_secs(1));
     }
     rael.clear_colors();
     Map::Menu

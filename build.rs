@@ -185,7 +185,7 @@ fn write_assets_rs(images: &[ProcessedImage]) {
     }
 
     // Optional: generate an array of references for easy iteration
-    output += "pub static ALL_IMAGES: [&ImageAsset<160, 120>; ";
+    output += "pub static ALL_IMAGES: [&ImageAsset<80, 60>; ";
     output += &images.len().to_string();
     output += "] = [\n";
     for img in images {
@@ -205,9 +205,9 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let images = vec![
-        process_image_internal("./assets/introduction/1.jpg", "INTRO_1", 160, 120, false),
-        process_image_internal("./assets/introduction/2.jpg", "INTRO_2", 160, 120, false),
-        process_image_internal("./assets/introduction/3.jpg", "INTRO_3", 160, 120, false),
+        process_image_internal("./assets/introduction/1.png", "INTRO_1", 80, 60, false),
+        process_image_internal("./assets/introduction/2.png", "INTRO_2", 80, 60, false),
+        process_image_internal("./assets/introduction/3.png", "INTRO_3", 80, 60, false),
     ];
 
     write_assets_rs(&images);
