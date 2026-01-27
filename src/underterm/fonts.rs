@@ -5,8 +5,9 @@
 //
 use figlet_rs::FIGfont;
 use rael::Color;
+use rael::Rael;
 
-pub fn miniwi(text: &str, color: Color, x: u16, y: u16) -> String {
+pub fn miniwi(rael: &mut Rael, text: &str, color: Color, x: usize, y: usize, z: u8) {
     let font =
         FIGfont::from_file("./src/underterm/default.flf").expect("failed to load figlet font");
 
@@ -15,20 +16,14 @@ pub fn miniwi(text: &str, color: Color, x: u16, y: u16) -> String {
         .expect("figlet conversion failed")
         .to_string();
 
-    let mut out = String::new();
+    for (dy, line) in rendered.lines().enumerate() {
+        for (dx, ch) in line.chars().enumerate() {
+            // Skip empty space to avoid overwriting background
+            if ch == ' ' || dy % 2 != 0 {
+                continue;
+            }
 
-    // Set RGB foreground color (truecolor)
-    out.push_str(&format!("\x1b[38;2;{};{};{}m", color.r, color.g, color.b));
-
-    // Write each line at the correct screen position
-    for (i, line) in rendered.lines().enumerate() {
-        // ANSI cursor move: row (y), column (x), both 1-based
-        out.push_str(&format!("\x1b[{};{}H", y + i as u16, x));
-        out.push_str(line);
+            rael.set_pixel(x + dx, y + dy, z, color, Some(ch));
+        }
     }
-
-    // Reset ANSI state
-    out.push_str("\x1b[0m");
-
-    out
 }

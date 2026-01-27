@@ -226,7 +226,7 @@ impl Rael {
                     buffer.push_str(&format!("\u{1b}[48;2;{};{};{}m ", top.r, top.g, top.b));
                 } else if self.chars[y / 2][x] != ' ' {
                     buffer.push_str(&format!(
-                        "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m▄{}",
+                        "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m{}",
                         top.r,
                         top.g,
                         top.b,
