@@ -3,11 +3,14 @@
 // ▛▛▌▌▛▌▌▌▌▌▌
 // ▌▌▌▌▌▌▌▚▚▘▌ looks such a gud choice, but that mean i have to implement a way to add  this text
 //
-use figlet_rs::FIGfont;
+use crate::underterm::figlet::*;
 use rael::Color;
 use rael::Rael;
 
-pub fn miniwi(rael: &mut Rael, text: &str, color: Color, x: usize, y: usize, z: u8) {
+pub fn miniwi(rael: &mut Rael, text: &str, bg: Color, fg: Color, x: usize, y: usize, z: u8) {
+    if !y.is_multiple_of(2) {
+        return;
+    }
     let font =
         FIGfont::from_file("./src/underterm/default.flf").expect("failed to load figlet font");
 
@@ -17,13 +20,14 @@ pub fn miniwi(rael: &mut Rael, text: &str, color: Color, x: usize, y: usize, z: 
         .to_string();
 
     for (dy, line) in rendered.lines().enumerate() {
-        for (dx, ch) in line.chars().enumerate() {
-            // Skip empty space to avoid overwriting background
-            if ch == ' ' || dy % 2 != 0 {
+        let chars: Vec<char> = line.chars().collect();
+
+        for dx in 0..chars.len() {
+            let ch = chars[dx];
+            if ch == ' ' {
                 continue;
             }
-
-            rael.set_pixel(x + dx, y + dy, z, color, Some(ch));
+            rael.set_text(x + dx, y + dy * 2, z, bg, fg, ch);
         }
     }
 }

@@ -9,6 +9,8 @@ use assets::*;
 mod fonts;
 use crate::underterm::fonts::miniwi;
 
+mod figlet;
+
 pub enum Map {
     Intro,
     Menu,
@@ -21,7 +23,8 @@ pub async fn introduction(rael: &mut Rael) -> Map {
         rael.set_image(*i, (center_w as usize, 0, 0));
         miniwi(
             rael,
-            "MRAOW",
+            "MRAOW mrp :3",
+            Color::new(0, 0, 0),
             Color::new(255, 255, 255),
             (rael.widht / 2).into(),
             80,
@@ -37,8 +40,8 @@ pub async fn introduction(rael: &mut Rael) -> Map {
 }
 
 pub async fn menu(rael: &mut Rael) -> Map {
-    for i in 0..10 {
-        rael.set_pixel(i, i, 2, Color::new(255, 0, 0), None);
+    for i in 0..100 {
+        rael.set_pixel(i, i, 2, Color::new(255, 0, 0));
     }
 
     let _ = rael.render().await;

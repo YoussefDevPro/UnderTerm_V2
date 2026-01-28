@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 crossterm = { version = "0.29.0",features = ["event-stream","bracketed-paste"] }
-figlet-rs = "0.1.5"
 futures = "0.3.31"
 futures-timer = "3.0.3"
 lazy_static = "1.5.0"

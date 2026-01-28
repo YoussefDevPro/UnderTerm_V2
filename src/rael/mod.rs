@@ -7,9 +7,9 @@ use crossterm::{
     event::EnableFocusChange,
     execute,
     terminal::{
-        disable_raw_mode, enable_raw_mode, supports_keyboard_enhancement, window_size,
         BeginSynchronizedUpdate, DisableLineWrap, EnableLineWrap, EndSynchronizedUpdate,
-        EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
+        EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode,
+        supports_keyboard_enhancement, window_size,
     },
 };
 use rayon::prelude::*;
@@ -64,7 +64,7 @@ pub struct Rael {
     /// Input handler
     pub inputs: Input,
     /// char for custom rendering
-    pub chars: [[char; MAX]; MAX / 2],
+    pub chars: [[char; MAX]; MAX],
 }
 
 impl Rael {
@@ -88,7 +88,7 @@ impl Rael {
         execute!(
             stdout,
             EnterAlternateScreen,
-            DisableLineWrap,
+            //DisableLineWrap,
             EnableFocusChange,
             EnableMouseCapture,
             SetTitle::<&str>(title),
@@ -108,7 +108,7 @@ impl Rael {
             stdout,
             old: [[1; MAX]; MAX],
             inputs: Input::new(reader),
-            chars: [[' '; MAX]; MAX / 2],
+            chars: [[' '; MAX]; MAX],
         })
     }
 
@@ -138,14 +138,25 @@ impl Rael {
     ///
     /// # Panics
     /// Panics if `x` or `y` exceeds MAX
-    pub fn set_pixel(&mut self, x: usize, y: usize, z: u8, color: Color, char: Option<char>) {
+    pub fn set_pixel(&mut self, x: usize, y: usize, z: u8, color: Color) {
         if x > MAX || y > MAX {
             panic!("y={y} and x={x}, one of them exceeds MAX:{MAX}");
         }
         if self.z_buffer[y][x] <= z {
             self.pixels[y][x] = self.get_or_insert_color(color);
             self.z_buffer[y][x] = z;
-            self.chars[y / 2][x] = char.unwrap_or(' ');
+        }
+    }
+
+    pub fn set_text(&mut self, x: usize, y: usize, z: u8, bg: Color, fg: Color, cchar: char) {
+        if x > MAX || y > MAX {
+            panic!("y={y} and x={x}, one of them exceeds MAX:{MAX}");
+        }
+        if self.z_buffer[y][x] <= z && y.is_multiple_of(2) {
+            self.pixels[y][x] = self.get_or_insert_color(bg);
+            self.z_buffer[y][x] = z;
+            self.chars[y][x] = cchar;
+            self.pixels[y + 1][x] = self.get_or_insert_color(fg);
         }
     }
 
@@ -171,7 +182,7 @@ impl Rael {
                 }
 
                 let color = image.colors[color_index];
-                self.set_pixel(tx, ty, oz, color, None);
+                self.set_pixel(tx, ty, oz, color);
             }
         }
     }
@@ -183,7 +194,7 @@ impl Rael {
         self.old = self.pixels;
         self.pixels = [[0; MAX]; MAX];
         self.z_buffer = [[0; MAX]; MAX];
-        self.chars = [[' '; MAX]; MAX / 2]
+        self.chars = [[' '; MAX]; MAX]
     }
 
     /// Clear all stored colors except black
@@ -224,16 +235,10 @@ impl Rael {
                 let bottom = self.colors[bottom as usize];
                 if top == bottom {
                     buffer.push_str(&format!("\u{1b}[48;2;{};{};{}m ", top.r, top.g, top.b));
-                } else if self.chars[y / 2][x] != ' ' {
+                } else if self.chars[y][x] != ' ' {
                     buffer.push_str(&format!(
                         "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m{}",
-                        top.r,
-                        top.g,
-                        top.b,
-                        bottom.r,
-                        bottom.g,
-                        bottom.b,
-                        self.chars[y / 2][x]
+                        top.r, top.g, top.b, bottom.r, bottom.g, bottom.b, self.chars[y][x]
                     ));
                 } else {
                     buffer.push_str(&format!(
