@@ -202,6 +202,15 @@ impl Rael {
         self.colors = vec![Color::new(0, 0, 0)];
     }
 
+    pub fn force_clear(&mut self) {
+        // all those clears was not enough, so i made this >:3
+        self.old = [[255; MAX]; MAX];
+        self.pixels = [[0; MAX]; MAX];
+        self.z_buffer = [[0; MAX]; MAX];
+        self.chars = [[' '; MAX]; MAX];
+        self.clear_colors();
+    }
+
     /// Render the current frame to the terminal
     ///
     /// Only updates pixels that changed since last frame
@@ -234,7 +243,7 @@ impl Rael {
                 let top = self.colors[top as usize];
                 let bottom = self.colors[bottom as usize];
                 if top == bottom {
-                    buffer.push_str(&format!("\u{1b}[48;2;{};{};{}m ", top.r, top.g, top.b));
+                    buffer.push_str(&format!("\u{1b}[38;2;{};{};{}m█", top.r, top.g, top.b));
                 } else if self.chars[y][x] != ' ' {
                     buffer.push_str(&format!(
                         "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m{}",

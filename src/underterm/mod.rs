@@ -17,23 +17,28 @@ pub enum Map {
     Exit,
 }
 
+const INTRO_TEXT: [&str; 2] = [
+    "Long time ago, two races ruled the world",
+    "They were all gay and silly",
+];
+
 pub async fn introduction(rael: &mut Rael) -> Map {
     let center_w = (rael.widht / 2) - 40;
-    for i in ALL_IMAGES {
-        //rael.set_image(*i, (center_w as usize, 0, 0));
+    for i in 0..ALL_IMAGES.len() {
+        rael.set_image(*ALL_IMAGES[i], (center_w as usize, 0, 0));
         set_figlet(
             rael,
-            "Mraow",
+            INTRO_TEXT[i],
             Color::new(0, 0, 0),
             Color::new(255, 255, 255),
             (70, 0, 2),
-            Some((true, true)),
-            "src/underterm/maxiwi.flf",
+            Some((true, false)),
+            "src/underterm/default.flf",
         );
         let _ = rael.render().await;
 
-        rael.clear();
-        sleep(Duration::from_secs(1));
+        rael.force_clear();
+        sleep(Duration::from_secs(5));
     }
 
     rael.clear_colors();
