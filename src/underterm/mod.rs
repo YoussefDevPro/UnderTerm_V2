@@ -23,13 +23,21 @@ pub async fn introduction(rael: &mut Rael) -> Map {
         rael.set_image(*i, (center_w as usize, 0, 0));
         miniwi(
             rael,
-            "MRAOW mrp :3",
+            "MRAOW mrp :3 ",
             Color::new(0, 0, 0),
             Color::new(255, 255, 255),
             (rael.widht / 2).into(),
             80,
             2,
         );
+        rael.set_text(
+            (rael.widht - 3).into(),
+            0,
+            2,
+            Color::new(0, 0, 0),
+            Color::new(255, 255, 255),
+            '',
+        ); // it fucking works!!
         let _ = rael.render().await;
 
         rael.clear();
