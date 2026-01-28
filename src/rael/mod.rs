@@ -7,9 +7,9 @@ use crossterm::{
     event::EnableFocusChange,
     execute,
     terminal::{
+        disable_raw_mode, enable_raw_mode, supports_keyboard_enhancement, window_size,
         BeginSynchronizedUpdate, DisableLineWrap, EnableLineWrap, EndSynchronizedUpdate,
-        EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode,
-        supports_keyboard_enhancement, window_size,
+        EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
     },
 };
 use rayon::prelude::*;
@@ -88,7 +88,7 @@ impl Rael {
         execute!(
             stdout,
             EnterAlternateScreen,
-            //DisableLineWrap,
+            DisableLineWrap,
             EnableFocusChange,
             EnableMouseCapture,
             SetTitle::<&str>(title),

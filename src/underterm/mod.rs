@@ -7,7 +7,7 @@ use crate::assets;
 use assets::*;
 
 mod fonts;
-use crate::underterm::fonts::miniwi;
+use crate::underterm::fonts::set_figlet;
 
 mod figlet;
 
@@ -20,30 +20,24 @@ pub enum Map {
 pub async fn introduction(rael: &mut Rael) -> Map {
     let center_w = (rael.widht / 2) - 40;
     for i in ALL_IMAGES {
-        rael.set_image(*i, (center_w as usize, 0, 0));
-        miniwi(
+        //rael.set_image(*i, (center_w as usize, 0, 0));
+        set_figlet(
             rael,
-            "MRAOW mrp :3 ",
+            "Mraow",
             Color::new(0, 0, 0),
             Color::new(255, 255, 255),
-            (rael.widht / 2).into(),
-            80,
-            2,
+            (70, 0, 2),
+            Some((true, true)),
+            "src/underterm/maxiwi.flf",
         );
-        rael.set_text(
-            (rael.widht - 3).into(),
-            0,
-            2,
-            Color::new(0, 0, 0),
-            Color::new(255, 255, 255),
-            '',
-        ); // it fucking works!!
         let _ = rael.render().await;
 
         rael.clear();
         sleep(Duration::from_secs(1));
     }
+
     rael.clear_colors();
+    let _ = rael.render().await;
     Map::Menu
 }
 
@@ -53,13 +47,6 @@ pub async fn menu(rael: &mut Rael) -> Map {
     }
 
     let _ = rael.render().await;
-    //let _ = rael.render_custom(miniwi(
-    //    "UNDERTERM",
-    //    Color::new(255, 255, 255),
-    //    rael.widht / 2 - 30,
-    //    40,
-    //));
-
     sleep(Duration::from_secs(2));
 
     rael.clear();
