@@ -981,6 +981,7 @@ dependencies = [
  "futures-timer",
  "image",
  "lazy_static",
+ "rand",
  "rayon",
  "rust-embed",
  "tokio",
