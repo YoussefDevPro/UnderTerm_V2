@@ -1,7 +1,10 @@
+use crossterm::cursor;
 use crossterm::event::{
     EnableMouseCapture, EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
+use crossterm::queue;
+use crossterm::style::{Color as CrosstermColor, Print, SetBackgroundColor, SetForegroundColor};
 use crossterm::{
     cursor::{Hide, Show},
     event::EnableFocusChange,
@@ -12,7 +15,7 @@ use crossterm::{
         EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
     },
 };
-use rayon::prelude::*;
+use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 
 use crate::rael::input::Input;
@@ -22,7 +25,7 @@ mod input;
 const MAX: usize = 512;
 
 /// RGB color
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub struct Color {
     /// Red channel (0–255)
     pub r: u8,
@@ -52,19 +55,21 @@ pub struct Rael {
     /// Terminal height (doubled for pixel aspect)
     pub height: u16,
     /// Current pixel buffer (stores color indices)
-    pub pixels: [[u8; MAX]; MAX],
+    pub pixels: [[u16; MAX]; MAX],
     /// Z-buffer for depth handling
     pub z_buffer: [[u8; MAX]; MAX],
     /// List of unique colors used
     pub colors: Vec<Color>,
+    pub hash_colors: HashMap<Color, u16>,
     /// Stdout handle for rendering
     pub stdout: Stdout,
     /// Previous frame for diff rendering
-    pub old: [[u8; MAX]; MAX],
+    pub old: [[u16; MAX]; MAX],
     /// Input handler
     pub inputs: Input,
     /// char for custom rendering
     pub chars: [[char; MAX]; MAX],
+    pub dirty_rows: [u128; 2],
 }
 
 impl Rael {
@@ -98,6 +103,8 @@ impl Rael {
 
         let win = window_size().unwrap();
         let reader = EventStream::new();
+        let mut hash_colors = HashMap::new();
+        hash_colors.insert(Color { r: 0, g: 0, b: 0 }, 0);
 
         Ok(Rael {
             widht: win.columns,
@@ -109,24 +116,17 @@ impl Rael {
             old: [[1; MAX]; MAX],
             inputs: Input::new(reader),
             chars: [[' '; MAX]; MAX],
+            hash_colors,
+            dirty_rows: [0; 2],
         })
     }
 
-    /// Get the index of a color, inserting it if new
-    ///
-    /// # Parameters
-    /// - `color`: the color to find or insert
-    ///
-    /// # Returns
-    /// The index of the color in the color palette
-    fn get_or_insert_color(&mut self, color: Color) -> u8 {
-        if let Some(i) = self.colors.par_iter().position_any(|&mraow| mraow == color) {
-            i as u8
-        } else {
-            let i = self.colors.len();
+    fn get_or_insert_color(&mut self, color: Color) -> u16 {
+        *self.hash_colors.entry(color).or_insert_with(|| {
+            let new_index = self.colors.len() as u16;
             self.colors.push(color);
-            i as u8
-        }
+            new_index
+        })
     }
 
     /// Set a pixel at a specific position with depth and color
@@ -145,6 +145,7 @@ impl Rael {
         if self.z_buffer[y][x] <= z {
             self.pixels[y][x] = self.get_or_insert_color(color);
             self.z_buffer[y][x] = z;
+            self.dirty_rows[(y / 2) / 128] |= 1 << ((y / 2) % 128);
         }
     }
 
@@ -157,6 +158,8 @@ impl Rael {
             self.z_buffer[y][x] = z;
             self.chars[y][x] = cchar;
             self.pixels[y + 1][x] = self.get_or_insert_color(fg);
+            let term_y = if y % 2 == 0 { y / 2 } else { (y + 1) / 2 };
+            self.dirty_rows[term_y / 128] |= 1 << (term_y % 128);
         }
     }
 
@@ -194,12 +197,16 @@ impl Rael {
         self.old = self.pixels;
         self.pixels = [[0; MAX]; MAX];
         self.z_buffer = [[0; MAX]; MAX];
-        self.chars = [[' '; MAX]; MAX]
+        self.chars = [[' '; MAX]; MAX];
+        self.dirty_rows = [0; 2];
     }
 
     /// Clear all stored colors except black
     pub fn clear_colors(&mut self) {
         self.colors = vec![Color::new(0, 0, 0)];
+        let mut hash = HashMap::new();
+        hash.insert(Color::new(0, 0, 0), 0);
+        self.hash_colors = hash;
     }
 
     pub fn force_clear(&mut self) {
@@ -208,58 +215,100 @@ impl Rael {
         self.pixels = [[0; MAX]; MAX];
         self.z_buffer = [[0; MAX]; MAX];
         self.chars = [[' '; MAX]; MAX];
+        self.dirty_rows = [u128::MAX; 2];
         self.clear_colors();
     }
 
-    /// Render the current frame to the terminal
-    ///
-    /// Only updates pixels that changed since last frame
     pub async fn render(&mut self) -> io::Result<()> {
-        execute!(self.stdout, BeginSynchronizedUpdate)?;
-        let mut buffer = String::new();
+        queue!(self.stdout, BeginSynchronizedUpdate)?;
 
-        for y in (0..self.height as usize).step_by(2) {
-            for x in 0..self.widht as usize {
-                buffer.push_str(&format!("\u{1b}[{};{}H", (y + 1).div_ceil(2), x + 1));
+        for bucket in 0..2 {
+            let mut yummy_bits = self.dirty_rows[bucket];
 
-                let top = self.pixels[y][x];
-                let bottom = if y + 1 < self.height.into() {
-                    self.pixels[y + 1][x]
-                } else {
-                    top
-                };
+            if yummy_bits == 0 {
+                continue;
+            }
 
-                let otop = self.old[y][x];
-                let obottom = if y + 1 < self.height.into() {
-                    self.old[y + 1][x]
-                } else {
-                    otop
-                };
+            while yummy_bits != 0 {
+                let mini_bit = yummy_bits.trailing_zeros() as usize;
+                let y = (bucket * 128) + mini_bit;
 
-                if top == otop && bottom == obottom {
-                    continue;
+                let render_y = y * 2;
+
+                queue!(self.stdout, cursor::MoveTo(0, (render_y / 2) as u16))?;
+
+                for x in 0..self.widht as usize {
+                    let top = self.pixels[render_y][x];
+                    let bottom = if render_y + 1 < self.height.into() {
+                        self.pixels[render_y + 1][x]
+                    } else {
+                        top
+                    };
+
+                    let old_top = self.old[render_y][x];
+                    let old_bottom = if render_y + 1 < self.height.into() {
+                        self.old[render_y + 1][x]
+                    } else {
+                        old_top
+                    };
+
+                    if top == old_top && bottom == old_bottom {
+                        queue!(self.stdout, cursor::MoveRight(1))?;
+                        continue;
+                    }
+
+                    let color_top = self.colors[top as usize];
+                    let color_bottom = self.colors[bottom as usize];
+
+                    if color_top == color_bottom {
+                        queue!(
+                            self.stdout,
+                            SetBackgroundColor(CrosstermColor::Rgb {
+                                r: color_top.r,
+                                g: color_top.g,
+                                b: color_top.b
+                            }),
+                            Print(" ")
+                        )?;
+                    } else if self.chars[render_y][x] != ' ' {
+                        queue!(
+                            self.stdout,
+                            SetForegroundColor(CrosstermColor::Rgb {
+                                r: color_bottom.r,
+                                g: color_bottom.g,
+                                b: color_bottom.b
+                            }),
+                            SetBackgroundColor(CrosstermColor::Rgb {
+                                r: color_top.r,
+                                g: color_top.g,
+                                b: color_top.b
+                            }),
+                            Print(self.chars[render_y][x])
+                        )?;
+                    } else {
+                        queue!(
+                            self.stdout,
+                            SetForegroundColor(CrosstermColor::Rgb {
+                                r: color_bottom.r,
+                                g: color_bottom.g,
+                                b: color_bottom.b
+                            }),
+                            SetBackgroundColor(CrosstermColor::Rgb {
+                                r: color_top.r,
+                                g: color_top.g,
+                                b: color_top.b
+                            }),
+                            Print("▄")
+                        )?;
+                    }
                 }
 
-                let top = self.colors[top as usize];
-                let bottom = self.colors[bottom as usize];
-                if top == bottom {
-                    buffer.push_str(&format!("\u{1b}[38;2;{};{};{}m█", top.r, top.g, top.b));
-                } else if self.chars[y][x] != ' ' {
-                    buffer.push_str(&format!(
-                        "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m{}",
-                        top.r, top.g, top.b, bottom.r, bottom.g, bottom.b, self.chars[y][x]
-                    ));
-                } else {
-                    buffer.push_str(&format!(
-                        "\u{1b}[48;2;{};{};{}m\u{1b}[38;2;{};{};{}m▄",
-                        top.r, top.g, top.b, bottom.r, bottom.g, bottom.b
-                    ));
-                }
+                yummy_bits &= !(1 << mini_bit);
             }
         }
-
-        execute!(self.stdout, EndSynchronizedUpdate)?;
-        self.stdout.write_all(buffer.as_bytes())?;
+        queue!(self.stdout, EndSynchronizedUpdate)?;
+        self.stdout.flush()?;
+        self.dirty_rows = [0; 2];
         Ok(())
     }
 

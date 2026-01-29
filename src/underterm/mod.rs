@@ -17,9 +17,10 @@ pub enum Map {
     Exit,
 }
 
-const INTRO_TEXT: [&str; 2] = [
-    "Long time ago, two races ruled the world",
-    "They were all gay and silly",
+const INTRO_TEXT: [&str; 3] = [
+    "long time ago, two races ruled the world",
+    "they were all gay and silly",
+    "and mraow",
 ];
 
 pub async fn introduction(rael: &mut Rael) -> Map {
@@ -37,7 +38,7 @@ pub async fn introduction(rael: &mut Rael) -> Map {
         );
         let _ = rael.render().await;
 
-        rael.force_clear();
+        rael.clear();
         sleep(Duration::from_secs(5));
     }
 

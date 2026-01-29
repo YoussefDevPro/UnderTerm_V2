@@ -39,21 +39,18 @@ pub fn set_figlet(
         }
         if cy {
             y = (rael.height / 2) as usize - (rendered.lines().count() / 2);
-            if !y.is_multiple_of(2) {
-                y += 1
-            }
+            y = y.div_ceil(2);
         }
     }
 
     for (dy, line) in rendered.lines().enumerate() {
         let chars: Vec<char> = line.chars().collect();
 
-        for dx in 0..chars.len() {
-            let ch = chars[dx];
-            if ch == ' ' {
+        for (dx, ch) in chars.iter().enumerate() {
+            if *ch == ' ' {
                 continue;
             }
-            rael.set_text(x + dx, y + dy * 2, z, bg, fg, ch);
+            rael.set_text(x + dx, y + dy * 2, z, bg, fg, *ch);
         }
     }
 }
