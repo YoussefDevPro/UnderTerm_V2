@@ -64,11 +64,12 @@ pub struct Rael {
     /// Stdout handle for rendering
     pub stdout: Stdout,
     /// Previous frame for diff rendering
-    pub old: [[u16; MAX]; MAX],
+    pub old: Box<[[u16; MAX]; MAX]>,
     /// Input handler
     pub inputs: Input,
     /// char for custom rendering
     pub chars: [[char; MAX]; MAX],
+    pub old_chars: Box<[[char; MAX]; MAX]>,
     pub dirty_rows: [u128; 2],
 }
 
@@ -113,11 +114,12 @@ impl Rael {
             z_buffer: [[0; MAX]; MAX],
             colors: vec![Color::new(0, 0, 0)],
             stdout,
-            old: [[1; MAX]; MAX],
+            old: Box::new([[1; MAX]; MAX]),
             inputs: Input::new(reader),
             chars: [[' '; MAX]; MAX],
             hash_colors,
             dirty_rows: [0; 2],
+            old_chars: Box::new([[' '; MAX]; MAX]),
         })
     }
 
@@ -158,8 +160,7 @@ impl Rael {
             self.z_buffer[y][x] = z;
             self.chars[y][x] = cchar;
             self.pixels[y + 1][x] = self.get_or_insert_color(fg);
-            let term_y = if y % 2 == 0 { y / 2 } else { (y + 1) / 2 };
-            self.dirty_rows[term_y / 128] |= 1 << (term_y % 128);
+            self.dirty_rows[(y / 2) / 128] |= 1 << ((y / 2) % 128);
         }
     }
 
@@ -194,11 +195,23 @@ impl Rael {
     ///
     /// Use this before rendering a new frame
     pub fn clear(&mut self) {
-        self.old = self.pixels;
+        *self.old = self.pixels;
         self.pixels = [[0; MAX]; MAX];
         self.z_buffer = [[0; MAX]; MAX];
-        self.chars = [[' '; MAX]; MAX];
+        *self.old_chars = self.chars;
         self.dirty_rows = [0; 2];
+        for y in 0..self.height {
+            // If this row has ANY character, mark it dirty so the
+            // next render() knows it needs to be wiped.
+            let term_y = (y / 2) as usize;
+            for x in 0..self.widht as usize {
+                if self.chars[y as usize][x] != ' ' {
+                    self.dirty_rows[term_y / 128] |= 1u128 << (term_y % 128);
+                    break; // Move to next row
+                }
+            }
+        }
+        self.chars = [[' '; MAX]; MAX];
     }
 
     /// Clear all stored colors except black
@@ -211,7 +224,7 @@ impl Rael {
 
     pub fn force_clear(&mut self) {
         // all those clears was not enough, so i made this >:3
-        self.old = [[255; MAX]; MAX];
+        *self.old = [[255; MAX]; MAX];
         self.pixels = [[0; MAX]; MAX];
         self.z_buffer = [[0; MAX]; MAX];
         self.chars = [[' '; MAX]; MAX];
@@ -235,71 +248,75 @@ impl Rael {
 
                 let render_y = y * 2;
 
-                queue!(self.stdout, cursor::MoveTo(0, (render_y / 2) as u16))?;
+                if render_y < self.height.into() {
+                    queue!(self.stdout, cursor::MoveTo(0, (render_y / 2) as u16))?;
 
-                for x in 0..self.widht as usize {
-                    let top = self.pixels[render_y][x];
-                    let bottom = if render_y + 1 < self.height.into() {
-                        self.pixels[render_y + 1][x]
-                    } else {
-                        top
-                    };
+                    for x in 0..self.widht as usize {
+                        let top = self.pixels[render_y][x];
+                        let bottom = if render_y + 1 < self.height.into() {
+                            self.pixels[render_y + 1][x]
+                        } else {
+                            top
+                        };
 
-                    let old_top = self.old[render_y][x];
-                    let old_bottom = if render_y + 1 < self.height.into() {
-                        self.old[render_y + 1][x]
-                    } else {
-                        old_top
-                    };
+                        let old_top = self.old[render_y][x];
+                        let old_bottom = if render_y + 1 < self.height.into() {
+                            self.old[render_y + 1][x]
+                        } else {
+                            old_top
+                        };
 
-                    if top == old_top && bottom == old_bottom {
-                        queue!(self.stdout, cursor::MoveRight(1))?;
-                        continue;
-                    }
+                        let new_char = self.chars[render_y][x];
+                        let old_char = self.old_chars[render_y][x];
 
-                    let color_top = self.colors[top as usize];
-                    let color_bottom = self.colors[bottom as usize];
+                        if top == old_top && bottom == old_bottom && new_char == old_char {
+                            queue!(self.stdout, cursor::MoveRight(1))?;
+                            continue;
+                        }
 
-                    if color_top == color_bottom {
-                        queue!(
-                            self.stdout,
-                            SetBackgroundColor(CrosstermColor::Rgb {
-                                r: color_top.r,
-                                g: color_top.g,
-                                b: color_top.b
-                            }),
-                            Print(" ")
-                        )?;
-                    } else if self.chars[render_y][x] != ' ' {
-                        queue!(
-                            self.stdout,
-                            SetForegroundColor(CrosstermColor::Rgb {
-                                r: color_bottom.r,
-                                g: color_bottom.g,
-                                b: color_bottom.b
-                            }),
-                            SetBackgroundColor(CrosstermColor::Rgb {
-                                r: color_top.r,
-                                g: color_top.g,
-                                b: color_top.b
-                            }),
-                            Print(self.chars[render_y][x])
-                        )?;
-                    } else {
-                        queue!(
-                            self.stdout,
-                            SetForegroundColor(CrosstermColor::Rgb {
-                                r: color_bottom.r,
-                                g: color_bottom.g,
-                                b: color_bottom.b
-                            }),
-                            SetBackgroundColor(CrosstermColor::Rgb {
-                                r: color_top.r,
-                                g: color_top.g,
-                                b: color_top.b
-                            }),
-                            Print("▄")
-                        )?;
+                        let color_top = self.colors[top as usize];
+                        let color_bottom = self.colors[bottom as usize];
+                        if new_char != ' ' {
+                            queue!(
+                                self.stdout,
+                                SetForegroundColor(CrosstermColor::Rgb {
+                                    r: color_bottom.r,
+                                    g: color_bottom.g,
+                                    b: color_bottom.b
+                                }),
+                                SetBackgroundColor(CrosstermColor::Rgb {
+                                    r: color_top.r,
+                                    g: color_top.g,
+                                    b: color_top.b
+                                }),
+                                Print(self.chars[render_y][x])
+                            )?;
+                        } else if color_top == color_bottom {
+                            queue!(
+                                self.stdout,
+                                SetBackgroundColor(CrosstermColor::Rgb {
+                                    r: color_top.r,
+                                    g: color_top.g,
+                                    b: color_top.b
+                                }),
+                                Print(" ")
+                            )?;
+                        } else {
+                            queue!(
+                                self.stdout,
+                                SetForegroundColor(CrosstermColor::Rgb {
+                                    r: color_bottom.r,
+                                    g: color_bottom.g,
+                                    b: color_bottom.b
+                                }),
+                                SetBackgroundColor(CrosstermColor::Rgb {
+                                    r: color_top.r,
+                                    g: color_top.g,
+                                    b: color_top.b
+                                }),
+                                Print("▄")
+                            )?;
+                        }
                     }
                 }
 
