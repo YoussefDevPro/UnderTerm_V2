@@ -11,7 +11,7 @@ struct Color {
     g: u8,
     b: u8,
 }
-fn format_u8_2d(vec: &Vec<Vec<u8>>, w: usize) -> String {
+fn format_u8_2d(vec: &Vec<Vec<u16>>, w: usize) -> String {
     let mut out = String::with_capacity(vec.len() * (w * 5));
     out.push('[');
     for row in vec {
@@ -69,7 +69,7 @@ struct ProcessedImage {
     name: String,
     width: usize,
     height: usize,
-    pixels: Vec<Vec<u8>>,
+    pixels: Vec<Vec<u16>>,
     palette: Vec<Color>,
 }
 
@@ -107,11 +107,11 @@ fn process_image_internal(
 
     // Palette quantization
     let mut palette: Vec<Color> = Vec::new();
-    let mut color_to_idx: HashMap<Color, u8> = HashMap::new();
-    let mut indexed: Vec<Vec<u8>> = Vec::with_capacity(finalh);
+    let mut color_to_idx: HashMap<Color, u16> = HashMap::new();
+    let mut indexed: Vec<Vec<u16>> = Vec::with_capacity(finalh);
 
     for y in 0..finalh {
-        let mut row: Vec<u8> = Vec::with_capacity(finalw);
+        let mut row: Vec<u16> = Vec::with_capacity(finalw);
         for x in 0..finalw {
             let px = img.get_pixel(x as u32, y as u32).to_rgba();
             let color = Color {
@@ -122,14 +122,7 @@ fn process_image_internal(
             let idx = match color_to_idx.get(&color) {
                 Some(&i) => i,
                 None => {
-                    let i = palette.len() as u8;
-                    if i > 254 {
-                        eprintln!(
-                            "Image '{}' exceeds allowed 255 unique colors after quantization (found at pixel [{},{}]).",
-                            input_path, x, y
-                        );
-                        std::process::exit(1);
-                    }
+                    let i = palette.len() as u16;
                     palette.push(color);
                     color_to_idx.insert(color, i);
                     i
@@ -184,15 +177,6 @@ fn write_assets_rs(images: &[ProcessedImage]) {
         output += &code;
     }
 
-    // Optional: generate an array of references for easy iteration
-    output += "pub static ALL_IMAGES: [&ImageAsset<80, 60>; ";
-    output += &images.len().to_string();
-    output += "] = [\n";
-    for img in images {
-        output += &format!("\t&{},\n", img.name);
-    }
-    output += "];\n";
-
     // Write the file
     fs::create_dir_all("src").unwrap();
     let f = File::create(assets_rs_path).unwrap();
@@ -205,9 +189,12 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let images = vec![
-        process_image_internal("./assets/introduction/1.png", "INTRO_1", 80, 60, false),
-        process_image_internal("./assets/introduction/2.png", "INTRO_2", 80, 60, false),
-        process_image_internal("./assets/introduction/3.png", "INTRO_3", 80, 60, false),
+        process_image_internal("./assets/introduction/1.png", "INTRO_1", 100, 55, false),
+        process_image_internal("./assets/introduction/2.png", "INTRO_2", 100, 55, false),
+        process_image_internal("./assets/introduction/3.png", "INTRO_3", 100, 55, false),
+        process_image_internal("./assets/introduction/4.png", "INTRO_4", 100, 55, false),
+        process_image_internal("./assets/introduction/5.png", "INTRO_5", 100, 55, false),
+        process_image_internal("./assets/introduction/6.png", "INTRO_6", 100, 55, false),
     ];
 
     write_assets_rs(&images);

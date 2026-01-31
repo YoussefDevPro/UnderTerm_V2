@@ -28,6 +28,8 @@
 //! [`fongdb`]: http://www.figlet.org/fontdb.cgi
 //! [`small.flf`]: http://www.figlet.org/fonts/small.flf
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::{fmt, fs};
 
@@ -228,7 +230,7 @@ impl FIGfont {
         if codetag_lines == 0 {
             return Ok(());
         }
-        if codetag_lines % codetag_height != 0 {
+        if !codetag_lines.is_multiple_of(codetag_height) {
             return Err("codetag font is illegal.".to_string());
         }
 
@@ -281,6 +283,18 @@ impl FIGfont {
         })
     }
 
+    pub fn get_char_widths(&self, message: &str) -> u32 {
+        let thing: Vec<u32> = message
+            .chars()
+            .filter_map(|c| self.fonts.get(&(c as u32)).map(|fig_char| fig_char.width))
+            .collect();
+        let mut result = 0;
+        for i in thing {
+            result += i;
+        }
+        result
+    }
+
     /// generate FIGlet font from specified file
     pub fn from_file(fontname: &str) -> Result<FIGfont, String> {
         let contents = FIGfont::read_font_file(fontname)?;
@@ -296,7 +310,7 @@ impl FIGfont {
     }
 
     /// convert string literal to FIGure
-    pub fn convert(&self, message: &str) -> Option<FIGure> {
+    pub fn convert(&self, message: &str) -> Option<FIGure<'_>> {
         if message.is_empty() {
             return None;
         }

@@ -1,7 +1,7 @@
 use crossterm::cursor;
 use crossterm::event::{
-    EnableMouseCapture, EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-    PushKeyboardEnhancementFlags,
+    DisableFocusChange, DisableMouseCapture, EnableMouseCapture, EventStream,
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::queue;
 use crossterm::style::{Color as CrosstermColor, Print, SetBackgroundColor, SetForegroundColor};
@@ -44,7 +44,7 @@ impl Color {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImageAsset<const W: usize, const H: usize> {
-    pub pixels: [[u8; W]; H],     // pixel indices into the palette
+    pub pixels: [[u16; W]; H],    // pixel indices into the palette
     pub colors: &'static [Color], // palette, slice instead of const generic
 }
 
@@ -68,8 +68,8 @@ pub struct Rael {
     /// Input handler
     pub inputs: Input,
     /// char for custom rendering
-    pub chars: [[char; MAX]; MAX],
-    pub old_chars: Box<[[char; MAX]; MAX]>,
+    pub chars: [[char; MAX]; MAX / 2],
+    pub old_chars: Box<[[char; MAX]; MAX / 2]>,
     pub dirty_rows: [u128; 2],
 }
 
@@ -83,12 +83,12 @@ impl Rael {
     /// # Errors
     /// Returns an error if terminal doesn't support enhanced keyboard protocols
     pub fn new(mut stdout: Stdout, title: &str) -> Result<Self, io::Error> {
-        if !supports_keyboard_enhancement().unwrap() {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "Terminal doesn't support Kitty protocols, required for rendering",
-            ));
-        };
+        //if !supports_keyboard_enhancement().unwrap() {
+        //    return Err(io::Error::new(
+        //        io::ErrorKind::Unsupported,
+        //        "Terminal doesn't support Kitty protocols, required for rendering",
+        //    ));
+        //};
 
         let _ = enable_raw_mode();
         execute!(
@@ -116,10 +116,10 @@ impl Rael {
             stdout,
             old: Box::new([[1; MAX]; MAX]),
             inputs: Input::new(reader),
-            chars: [[' '; MAX]; MAX],
+            chars: [[' '; MAX]; MAX / 2],
             hash_colors,
             dirty_rows: [0; 2],
-            old_chars: Box::new([[' '; MAX]; MAX]),
+            old_chars: Box::new([[' '; MAX]; MAX / 2]),
         })
     }
 
@@ -152,13 +152,13 @@ impl Rael {
     }
 
     pub fn set_text(&mut self, x: usize, y: usize, z: u8, bg: Color, fg: Color, cchar: char) {
-        if x > MAX || y > MAX {
+        if x > MAX || y > MAX / 2 {
             panic!("y={y} and x={x}, one of them exceeds MAX:{MAX}");
         }
         if self.z_buffer[y][x] <= z && y.is_multiple_of(2) {
             self.pixels[y][x] = self.get_or_insert_color(bg);
             self.z_buffer[y][x] = z;
-            self.chars[y][x] = cchar;
+            self.chars[y / 2][x] = cchar;
             self.pixels[y + 1][x] = self.get_or_insert_color(fg);
             self.dirty_rows[(y / 2) / 128] |= 1 << ((y / 2) % 128);
         }
@@ -196,22 +196,26 @@ impl Rael {
     /// Use this before rendering a new frame
     pub fn clear(&mut self) {
         *self.old = self.pixels;
-        self.pixels = [[0; MAX]; MAX];
-        self.z_buffer = [[0; MAX]; MAX];
         *self.old_chars = self.chars;
         self.dirty_rows = [0; 2];
-        for y in 0..self.height {
-            // If this row has ANY character, mark it dirty so the
-            // next render() knows it needs to be wiped.
-            let term_y = (y / 2) as usize;
+        for y in 0..self.height as usize {
+            let pixel_y1 = y * 2;
+            let pixel_y2 = y * 2 + 1;
+
             for x in 0..self.widht as usize {
-                if self.chars[y as usize][x] != ' ' {
-                    self.dirty_rows[term_y / 128] |= 1u128 << (term_y % 128);
-                    break; // Move to next row
+                let char_dirty = self.chars[y][x] != ' ';
+                let pixel_dirty = self.pixels[pixel_y1][x] != 0
+                    || (pixel_y2 < MAX && self.pixels[pixel_y2][x] != 0);
+
+                if char_dirty || pixel_dirty {
+                    self.dirty_rows[y / 128] |= 1u128 << (y % 128);
+                    break; // This terminal row is dirty; skip to next y
                 }
             }
         }
-        self.chars = [[' '; MAX]; MAX];
+        self.z_buffer = [[0; MAX]; MAX];
+        self.pixels = [[0; MAX]; MAX];
+        self.chars = [[' '; MAX]; MAX / 2];
     }
 
     /// Clear all stored colors except black
@@ -227,7 +231,7 @@ impl Rael {
         *self.old = [[255; MAX]; MAX];
         self.pixels = [[0; MAX]; MAX];
         self.z_buffer = [[0; MAX]; MAX];
-        self.chars = [[' '; MAX]; MAX];
+        self.chars = [[' '; MAX]; MAX / 2];
         self.dirty_rows = [u128::MAX; 2];
         self.clear_colors();
     }
@@ -265,10 +269,7 @@ impl Rael {
                         } else {
                             old_top
                         };
-
-                        let new_char = self.chars[render_y][x];
-                        let old_char = self.old_chars[render_y][x];
-
+                        let (new_char, old_char) = (self.chars[y][x], self.old_chars[y][x]);
                         if top == old_top && bottom == old_bottom && new_char == old_char {
                             queue!(self.stdout, cursor::MoveRight(1))?;
                             continue;
@@ -289,7 +290,7 @@ impl Rael {
                                     g: color_top.g,
                                     b: color_top.b
                                 }),
-                                Print(self.chars[render_y][x])
+                                Print(self.chars[y][x])
                             )?;
                         } else if color_top == color_bottom {
                             queue!(
@@ -336,10 +337,11 @@ impl Rael {
 }
 
 impl Drop for Rael {
-    /// Restore the terminal to its original state when Rael is dropped
     fn drop(&mut self) {
         let _ = execute!(
             self.stdout,
+            DisableMouseCapture,
+            DisableFocusChange,
             PopKeyboardEnhancementFlags,
             EndSynchronizedUpdate,
             EnableLineWrap,
