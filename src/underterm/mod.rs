@@ -22,11 +22,11 @@ pub enum Map {
 
 struct IntroScene {
     text: Vec<TextCommand>,
-    image: Option<ImageAsset<100, 55>>,
+    image: Option<ImageAsset<120, 66>>,
 }
 
 pub async fn introduction(rael: &mut Rael) -> Map {
-    let center_w = (rael.widht / 2) - 50;
+    let center_w = (rael.widht / 2) - 60;
     let intro_scenes: [IntroScene; 10] = [
         IntroScene {
             image: Some(INTRO_1),
@@ -125,7 +125,7 @@ pub async fn introduction(rael: &mut Rael) -> Map {
             }
         }
 
-        sleep(Duration::from_secs(5));
+        sleep(Duration::from_secs(1));
     }
 
     rael.force_clear();

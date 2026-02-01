@@ -1,3 +1,4 @@
+use bimap::BiMap;
 use crossterm::cursor;
 use crossterm::event::{
     DisableFocusChange, DisableMouseCapture, EnableMouseCapture, EventStream,
@@ -10,12 +11,11 @@ use crossterm::{
     event::EnableFocusChange,
     execute,
     terminal::{
-        disable_raw_mode, enable_raw_mode, supports_keyboard_enhancement, window_size,
         BeginSynchronizedUpdate, DisableLineWrap, EnableLineWrap, EndSynchronizedUpdate,
-        EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
+        EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode,
+        supports_keyboard_enhancement, window_size,
     },
 };
-use std::collections::HashMap;
 use std::io::{self, Stdout, Write};
 
 use crate::rael::input::Input;
@@ -24,19 +24,14 @@ mod input;
 
 const MAX: usize = 512;
 
-/// RGB color
 #[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub struct Color {
-    /// Red channel (0–255)
     pub r: u8,
-    /// Green channel (0–255)
     pub g: u8,
-    /// Blue channel (0–255)
     pub b: u8,
 }
 
 impl Color {
-    /// Create a new color from RGB values
     pub fn new(r: u8, g: u8, b: u8) -> Self {
         Color { r, g, b }
     }
@@ -44,51 +39,32 @@ impl Color {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImageAsset<const W: usize, const H: usize> {
-    pub pixels: [[u16; W]; H],    // pixel indices into the palette
-    pub colors: &'static [Color], // palette, slice instead of const generic
+    pub pixels: [[u16; W]; H],
+    pub colors: &'static [Color],
 }
 
-/// Main terminal renderer
 pub struct Rael {
-    /// Terminal width
     pub widht: u16,
-    /// Terminal height (doubled for pixel aspect)
     pub height: u16,
-    /// Current pixel buffer (stores color indices)
     pub pixels: [[u16; MAX]; MAX],
-    /// Z-buffer for depth handling
     pub z_buffer: [[u8; MAX]; MAX],
-    /// List of unique colors used
-    pub colors: Vec<Color>,
-    pub hash_colors: HashMap<Color, u16>,
-    /// Stdout handle for rendering
+    pub colors: BiMap<u16, Color>,
     pub stdout: Stdout,
-    /// Previous frame for diff rendering
     pub old: Box<[[u16; MAX]; MAX]>,
-    /// Input handler
     pub inputs: Input,
-    /// char for custom rendering
     pub chars: [[char; MAX]; MAX / 2],
     pub old_chars: Box<[[char; MAX]; MAX / 2]>,
     pub dirty_rows: [u128; 2],
 }
 
 impl Rael {
-    /// Initialize Rael and set up terminal
-    ///
-    /// # Parameters
-    /// - `stdout`: terminal output handle
-    /// - `title`: window title
-    ///
-    /// # Errors
-    /// Returns an error if terminal doesn't support enhanced keyboard protocols
     pub fn new(mut stdout: Stdout, title: &str) -> Result<Self, io::Error> {
-        //if !supports_keyboard_enhancement().unwrap() {
-        //    return Err(io::Error::new(
-        //        io::ErrorKind::Unsupported,
-        //        "Terminal doesn't support Kitty protocols, required for rendering",
-        //    ));
-        //};
+        if !supports_keyboard_enhancement().unwrap() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Terminal doesn't support Kitty protocols, required for rendering",
+            ));
+        };
 
         let _ = enable_raw_mode();
         execute!(
@@ -104,42 +80,39 @@ impl Rael {
 
         let win = window_size().unwrap();
         let reader = EventStream::new();
-        let mut hash_colors = HashMap::new();
-        hash_colors.insert(Color { r: 0, g: 0, b: 0 }, 0);
+        let mut colors = BiMap::new();
+        colors.insert(0, Color::new(0, 0, 0));
 
         Ok(Rael {
             widht: win.columns,
             height: win.rows * 2,
             pixels: [[0; MAX]; MAX],
             z_buffer: [[0; MAX]; MAX],
-            colors: vec![Color::new(0, 0, 0)],
+            colors,
             stdout,
             old: Box::new([[1; MAX]; MAX]),
             inputs: Input::new(reader),
             chars: [[' '; MAX]; MAX / 2],
-            hash_colors,
             dirty_rows: [0; 2],
             old_chars: Box::new([[' '; MAX]; MAX / 2]),
         })
     }
 
     fn get_or_insert_color(&mut self, color: Color) -> u16 {
-        *self.hash_colors.entry(color).or_insert_with(|| {
+        //*self.colors.entry(color).or_insert_with(|| {
+        //    let new_index = self.colors.len() as u16;
+        //    self.colors.push(color);
+        //    new_index
+        //})
+        if self.colors.contains_right(&color) {
+            *self.colors.get_by_right(&color).unwrap()
+        } else {
             let new_index = self.colors.len() as u16;
-            self.colors.push(color);
+            self.colors.insert(new_index, color);
             new_index
-        })
+        }
     }
 
-    /// Set a pixel at a specific position with depth and color
-    ///
-    /// # Parameters
-    /// - `x`, `y`: pixel coordinates
-    /// - `z`: depth for z-buffer
-    /// - `color`: pixel color
-    ///
-    /// # Panics
-    /// Panics if `x` or `y` exceeds MAX
     pub fn set_pixel(&mut self, x: usize, y: usize, z: u8, color: Color) {
         if x > MAX || y > MAX {
             panic!("y={y} and x={x}, one of them exceeds MAX:{MAX}");
@@ -155,7 +128,8 @@ impl Rael {
         if x > MAX || y > MAX / 2 {
             panic!("y={y} and x={x}, one of them exceeds MAX:{MAX}");
         }
-        if self.z_buffer[y][x] <= z && y.is_multiple_of(2) {
+        let y = if y.is_multiple_of(2) { y } else { y - 1 };
+        if self.z_buffer[y][x] <= z {
             self.pixels[y][x] = self.get_or_insert_color(bg);
             self.z_buffer[y][x] = z;
             self.chars[y / 2][x] = cchar;
@@ -191,9 +165,6 @@ impl Rael {
         }
     }
 
-    /// Clear the pixel buffer while saving the previous frame
-    ///
-    /// Use this before rendering a new frame
     pub fn clear(&mut self) {
         *self.old = self.pixels;
         *self.old_chars = self.chars;
@@ -218,12 +189,10 @@ impl Rael {
         self.chars = [[' '; MAX]; MAX / 2];
     }
 
-    /// Clear all stored colors except black
     pub fn clear_colors(&mut self) {
-        self.colors = vec![Color::new(0, 0, 0)];
-        let mut hash = HashMap::new();
-        hash.insert(Color::new(0, 0, 0), 0);
-        self.hash_colors = hash;
+        let mut colors = BiMap::new();
+        colors.insert(0, Color::new(0, 0, 0));
+        self.colors = colors;
     }
 
     pub fn force_clear(&mut self) {
@@ -253,30 +222,35 @@ impl Rael {
                 let render_y = y * 2;
 
                 if render_y < self.height.into() {
-                    queue!(self.stdout, cursor::MoveTo(0, (render_y / 2) as u16))?;
+                    queue!(self.stdout, cursor::MoveTo(0, y as u16))?;
+                    let row_top = self.pixels[render_y];
+                    let row_bottom = self.pixels[render_y + 1];
+                    let old_row_top = self.old[render_y];
+                    let old_row_bottom = self.old[render_y + 1];
+                    let chars = self.chars[y];
+                    let old_chars = self.old_chars[y];
+
+                    //let mut skip_count = 0;
 
                     for x in 0..self.widht as usize {
-                        let top = self.pixels[render_y][x];
-                        let bottom = if render_y + 1 < self.height.into() {
-                            self.pixels[render_y + 1][x]
-                        } else {
-                            top
-                        };
+                        let top = row_top[x];
+                        let bottom = row_bottom[x];
 
-                        let old_top = self.old[render_y][x];
-                        let old_bottom = if render_y + 1 < self.height.into() {
-                            self.old[render_y + 1][x]
-                        } else {
-                            old_top
-                        };
-                        let (new_char, old_char) = (self.chars[y][x], self.old_chars[y][x]);
+                        let old_top = old_row_top[x];
+                        let old_bottom = old_row_bottom[x];
+
+                        let (new_char, old_char) = (chars[x], old_chars[x]);
                         if top == old_top && bottom == old_bottom && new_char == old_char {
                             queue!(self.stdout, cursor::MoveRight(1))?;
                             continue;
                         }
 
-                        let color_top = self.colors[top as usize];
-                        let color_bottom = self.colors[bottom as usize];
+                        //if skip_count > 0 {
+                        //    queue!(self.stdout, cursor::MoveTo(0, skip_count))?;
+                        //}
+
+                        let color_top = self.colors.get_by_left(&top).unwrap();
+                        let color_bottom = self.colors.get_by_left(&bottom).unwrap();
                         if new_char != ' ' {
                             queue!(
                                 self.stdout,
@@ -290,7 +264,7 @@ impl Rael {
                                     g: color_top.g,
                                     b: color_top.b
                                 }),
-                                Print(self.chars[y][x])
+                                Print(new_char)
                             )?;
                         } else if color_top == color_bottom {
                             queue!(

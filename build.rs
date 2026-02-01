@@ -189,12 +189,12 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let images = vec![
-        process_image_internal("./assets/introduction/1.png", "INTRO_1", 100, 55, false),
-        process_image_internal("./assets/introduction/2.png", "INTRO_2", 100, 55, false),
-        process_image_internal("./assets/introduction/3.png", "INTRO_3", 100, 55, false),
-        process_image_internal("./assets/introduction/4.png", "INTRO_4", 100, 55, false),
-        process_image_internal("./assets/introduction/5.png", "INTRO_5", 100, 55, false),
-        process_image_internal("./assets/introduction/6.png", "INTRO_6", 100, 55, false),
+        process_image_internal("./assets/introduction/1.png", "INTRO_1", 120, 66, false),
+        process_image_internal("./assets/introduction/2.png", "INTRO_2", 120, 66, false),
+        process_image_internal("./assets/introduction/3.png", "INTRO_3", 120, 66, false),
+        process_image_internal("./assets/introduction/4.png", "INTRO_4", 120, 66, false),
+        process_image_internal("./assets/introduction/5.png", "INTRO_5", 120, 66, false),
+        process_image_internal("./assets/introduction/6.png", "INTRO_6", 120, 66, false),
     ];
 
     write_assets_rs(&images);

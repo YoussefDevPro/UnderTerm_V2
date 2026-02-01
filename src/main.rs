@@ -18,5 +18,6 @@ async fn main() -> std::io::Result<()> {
             Map::Exit => break,
         }
     }
+    //let _ = run_stress_test(&mut rael).await;
     Ok(())
 }

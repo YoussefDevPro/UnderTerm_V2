@@ -106,7 +106,7 @@ impl FIGfont {
                 FIGfont::extract_one_line(lines, index, height, hardblank, is_last_index)?;
             characters.push(one_line_character);
         }
-        let width = characters[0].len() as u32;
+        let width = characters[0].chars().count() as u32;
         let height = height as u32;
 
         Ok(FIGcharacter {
