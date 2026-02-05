@@ -5,8 +5,8 @@ use crossterm::event::KeyModifiers;
 use rael::Color;
 use rael::ImageAsset;
 use rael::Rael;
-use tokio::time::sleep;
 use tokio::time::Duration;
+use tokio::time::sleep;
 
 use crate::assets;
 use crate::underterm::text::TextCommand;
@@ -150,6 +150,7 @@ pub async fn introduction(rael: &mut Rael) -> Map {
                                     break;
                                 }
                                 tokio::task::yield_now().await;
+                                sleep(Duration::from_millis(2)).await;
                             }
                         } => {
                             should_exit = true;
@@ -176,7 +177,7 @@ pub async fn introduction(rael: &mut Rael) -> Map {
         }
         if should_exit {
             let mut ii: f32 = 1.0;
-            for iii in 0..20 {
+            for _ in 0..20 {
                 rael.force_clear();
                 if let Some(img) = scene.image {
                     rael.set_image(img, (center_w as usize, 1, 0));
@@ -194,7 +195,7 @@ pub async fn introduction(rael: &mut Rael) -> Map {
 
                 let _ = rael.render(Some(ii)).await;
                 ii -= 0.1;
-                sleep(Duration::from_millis(50)).await;
+                sleep(Duration::from_millis(30)).await;
             }
             rael.force_clear();
             return Map::Menu; // Exit function after fade completes
