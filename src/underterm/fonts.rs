@@ -15,7 +15,7 @@ pub struct StyledText {
 
 pub fn set_figlet(
     rael: &mut Rael,
-    segments: Vec<StyledText>,
+    segments: &Vec<StyledText>,
     bg: Color,
     cord: (usize, usize, u8),
     is_centered: Option<(bool, bool)>,
@@ -24,7 +24,7 @@ pub fn set_figlet(
     let (mut x, mut y, z) = cord;
 
     if !y.is_multiple_of(2) {
-        return;
+        y += 1;
     }
 
     let font = FIGfont::from_file(figlet_path).expect("failed to load figlet font");
@@ -57,7 +57,7 @@ pub fn set_figlet(
     let mut color_per_col = Vec::new();
     let mut full_text = String::new();
 
-    for segment in &segments {
+    for segment in segments {
         full_text.push_str(&segment.content);
         let char_width = font.get_char_widths(&segment.content);
 

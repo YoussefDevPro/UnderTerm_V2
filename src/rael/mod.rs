@@ -11,9 +11,9 @@ use crossterm::{
     event::EnableFocusChange,
     execute,
     terminal::{
+        disable_raw_mode, enable_raw_mode, supports_keyboard_enhancement, window_size,
         BeginSynchronizedUpdate, DisableLineWrap, EnableLineWrap, EndSynchronizedUpdate,
-        EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode,
-        supports_keyboard_enhancement, window_size,
+        EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
     },
 };
 use std::io::{self, Stdout, Write};
@@ -34,6 +34,15 @@ pub struct Color {
 impl Color {
     pub fn new(r: u8, g: u8, b: u8) -> Self {
         Color { r, g, b }
+    }
+
+    pub fn make_it_more_deltarune(&self, deltarune: f32) -> Self {
+        let deltarune = deltarune.clamp(0.0, 1.0);
+        Color {
+            r: (self.r as f32 * deltarune) as u8,
+            g: (self.g as f32 * deltarune) as u8,
+            b: (self.b as f32 * deltarune) as u8,
+        }
     }
 }
 
@@ -205,7 +214,8 @@ impl Rael {
         self.clear_colors();
     }
 
-    pub async fn render(&mut self) -> io::Result<()> {
+    pub async fn render(&mut self, deltarune: Option<f32>) -> io::Result<()> {
+        let deltarune = deltarune.unwrap_or(1.0);
         queue!(self.stdout, BeginSynchronizedUpdate)?;
 
         for bucket in 0..2 {
@@ -249,8 +259,16 @@ impl Rael {
                         //    queue!(self.stdout, cursor::MoveTo(0, skip_count))?;
                         //}
 
-                        let color_top = self.colors.get_by_left(&top).unwrap();
-                        let color_bottom = self.colors.get_by_left(&bottom).unwrap();
+                        let color_top = self
+                            .colors
+                            .get_by_left(&top)
+                            .unwrap()
+                            .make_it_more_deltarune(deltarune);
+                        let color_bottom = self
+                            .colors
+                            .get_by_left(&bottom)
+                            .unwrap()
+                            .make_it_more_deltarune(deltarune);
                         if new_char != ' ' {
                             queue!(
                                 self.stdout,

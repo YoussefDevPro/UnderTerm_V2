@@ -1,8 +1,12 @@
+use crate::underterm::fonts::StyledText;
 use crate::underterm::text::*;
+use crossterm::event::KeyEvent;
+use crossterm::event::KeyModifiers;
 use rael::Color;
 use rael::ImageAsset;
 use rael::Rael;
-use std::{thread::sleep, time::Duration};
+use tokio::time::sleep;
+use tokio::time::Duration;
 
 use crate::assets;
 use crate::underterm::text::TextCommand;
@@ -23,6 +27,13 @@ pub enum Map {
 struct IntroScene {
     text: Vec<TextCommand>,
     image: Option<ImageAsset<120, 66>>,
+}
+
+pub async fn check_if_we_should_exit_aah(rael: &Rael) -> bool {
+    rael.inputs.snapshot().await.keys.contains(&KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        KeyModifiers::NONE,
+    ))
 }
 
 pub async fn introduction(rael: &mut Rael) -> Map {
@@ -94,42 +105,107 @@ pub async fn introduction(rael: &mut Rael) -> Map {
             ],
         },
     ];
+    let mut should_exit = false;
+    let mut current_scene = vec![StyledText {
+        content: "mraow".to_string(),
+        fg: Color::new(255, 255, 255),
+    }];
     for (i, scene) in intro_scenes.iter().enumerate() {
+        if !should_exit {
+            should_exit = check_if_we_should_exit_aah(rael).await;
+        }
         let mut writer = TextWriter::new(&scene.text);
-        loop {
+        while !should_exit {
             match writer.next_step() {
                 WriterResult::Render(segments) => {
+                    if !should_exit {
+                        should_exit = check_if_we_should_exit_aah(rael).await;
+                    }
+                    current_scene = segments.clone();
                     rael.clear(); // Clear pixel/char buffers
 
                     if let Some(img) = scene.image {
-                        rael.set_image(img, (center_w as usize, 0, 0));
+                        rael.set_image(img, (center_w as usize, 1, 0));
                     }
 
                     let y = (rael.height / 2) + 27;
                     set_figlet(
                         rael,
-                        segments,
+                        &segments,
                         Color::new(0, 0, 0),
                         (0, y as usize, 0),
                         Some((true, i == 4)),
                         "./src/underterm/default.flf",
                     );
 
-                    let _ = rael.render().await;
-                    sleep(Duration::from_millis(40));
+                    let _ = rael.render(None).await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_millis(40)) => {},
+                        _ = async {
+                            loop {
+                                if rael.inputs.snapshot().await.keys.contains(&KeyEvent::new(
+                                    crossterm::event::KeyCode::Enter,
+                                    KeyModifiers::NONE,
+                                )) {
+                                    break;
+                                }
+                                tokio::task::yield_now().await;
+                            }
+                        } => {
+                            should_exit = true;
+                        }
+                    };
                 }
                 WriterResult::Wait(dur) => {
-                    sleep(dur);
+                    tokio::select! {
+                        _ = tokio::time::sleep(dur) => {},
+                        _ = async {
+                            loop {
+                                if check_if_we_should_exit_aah(rael).await {
+                                    break;
+                                }
+                                tokio::task::yield_now().await;
+                            }
+                        } => {
+                            should_exit = true;
+                        }
+                    };
                 }
                 WriterResult::Finished => break, // Move to next IntroScene
             }
         }
+        if should_exit {
+            let mut ii: f32 = 1.0;
+            for iii in 0..20 {
+                rael.force_clear();
+                if let Some(img) = scene.image {
+                    rael.set_image(img, (center_w as usize, 1, 0));
+                }
 
-        sleep(Duration::from_secs(1));
+                let y = (rael.height / 2) + 27;
+                set_figlet(
+                    rael,
+                    &current_scene,
+                    Color::new(0, 0, 0),
+                    (0, y as usize, 0),
+                    Some((true, i == 4)),
+                    "./src/underterm/default.flf",
+                );
+
+                let _ = rael.render(Some(ii)).await;
+                ii -= 0.1;
+                sleep(Duration::from_millis(50)).await;
+            }
+            rael.force_clear();
+            return Map::Menu; // Exit function after fade completes
+        }
+        if !should_exit {
+            sleep(Duration::from_secs(1)).await;
+        }
     }
 
     rael.force_clear();
-    let _ = rael.render().await;
+    let _ = rael.render(None).await;
     Map::Menu
 }
 
@@ -139,10 +215,10 @@ pub async fn menu(rael: &mut Rael) -> Map {
         rael.set_pixel(i, rael.height as usize - i, 2, Color::new(255, 0, 0));
     }
 
-    let _ = rael.render().await;
-    sleep(Duration::from_secs(2));
+    let _ = rael.render(None).await;
+    sleep(Duration::from_secs(2)).await;
 
     rael.clear();
-    let _ = rael.render().await;
+    let _ = rael.render(None).await;
     Map::Exit
 }

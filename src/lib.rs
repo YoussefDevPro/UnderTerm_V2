@@ -78,7 +78,6 @@ pub async fn run_stress_test(rael: &mut Rael) -> io::Result<()> {
             rael.set_text(i, 0, 255, Color::new(0, 0, 0), Color::new(255, 255, 255), c);
         }
 
-        rael.render().await?;
-        rael.clear();
+        rael.render(None).await?;
     }
 }
