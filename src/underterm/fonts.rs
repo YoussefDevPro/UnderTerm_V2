@@ -13,6 +13,8 @@ pub struct StyledText {
     pub fg: Color,
 }
 
+// TODO: Fix flickering issue thatm ight be bc when there is a string at the end of the text
+
 pub fn set_figlet(
     rael: &mut Rael,
     segments: &Vec<StyledText>,
@@ -20,6 +22,7 @@ pub fn set_figlet(
     cord: (usize, usize, u8),
     is_centered: Option<(bool, bool)>,
     figlet_path: &str,
+    max_widht: u16,
 ) {
     let (mut x, mut y, z) = cord;
 
@@ -34,46 +37,99 @@ pub fn set_figlet(
         .map(|s| s.content.as_str())
         .collect::<Vec<_>>()
         .join("");
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut rendered = Vec::new();
 
-    let rendered = font
-        .convert(&full_text)
-        .expect("figlet conversion failed")
-        .to_string();
+    for word in full_text.split_whitespace() {
+        if current.is_empty() {
+            current.push_str(word);
+        } else {
+            let space_w = font.get_char_widths(" ");
+            let new_w = font.get_char_widths(&current) + space_w + font.get_char_widths(word);
+
+            if new_w <= max_widht.into() {
+                current.push(' ');
+                current.push_str(word);
+            } else {
+                lines.push(current);
+                current = word.to_string();
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        lines.push(current);
+    }
+
+    for phraze in &lines {
+        rendered.push(
+            font.convert(phraze)
+                .expect("figlet conversion failed")
+                .to_string(),
+        );
+    }
 
     if let Some((cx, cy)) = is_centered {
         if cx {
-            let chars_len = rendered.lines().last().unwrap_or("").chars().count();
+            let chars_len = rendered[0].lines().last().unwrap_or("").chars().count();
             x = (rael.widht / 2) as usize - (chars_len / 2);
         }
         if cy {
-            let lines = rendered.lines().count();
+            let lines = rendered[0].lines().count();
             y = (rael.height / 2) as usize - (lines / 2);
             if !y.is_multiple_of(2) {
                 y += 1;
             }
         }
     }
+    let mut y_cursor = y;
 
-    let mut color_per_col = Vec::new();
-    let mut full_text = String::new();
+    for phrase in lines {
+        // ---- rebuild color_per_col for THIS phrase ----
+        let mut color_per_col = Vec::new();
+        let mut phrase_text = String::new();
 
-    for segment in segments {
-        full_text.push_str(&segment.content);
-        let char_width = font.get_char_widths(&segment.content);
+        let mut remaining = phrase.as_str();
 
-        for _ in 0..char_width {
-            color_per_col.push(segment.fg);
-        }
-    }
+        for segment in segments {
+            let seg = segment.content.as_str();
 
-    let final_figure = font.convert(&full_text).expect("Final render failed");
+            if remaining.is_empty() {
+                break;
+            }
 
-    for (dy, line) in final_figure.to_string().lines().enumerate() {
-        let y_pos = y + dy * 2;
-        for (dx, (ch, &char_fg)) in line.chars().zip(color_per_col.iter()).enumerate() {
-            if ch != ' ' {
-                rael.set_text(x + dx, y_pos, z, bg, char_fg, ch);
+            if remaining.starts_with(seg) {
+                phrase_text.push_str(seg);
+
+                let w = font.get_char_widths(seg);
+                for _ in 0..w {
+                    color_per_col.push(segment.fg);
+                }
+
+                remaining = &remaining[seg.len()..];
+            } else if remaining.starts_with(' ') && seg.starts_with(' ') {
+                phrase_text.push(' ');
+                color_per_col.push(segment.fg);
+                remaining = &remaining[1..];
             }
         }
+
+        let figure = font.convert(&phrase).expect("figlet conversion failed");
+        let figure_str = figure.to_string();
+        let figlet_lines: Vec<&str> = figure_str.lines().collect();
+
+        for (dy, line) in figlet_lines.iter().enumerate() {
+            let y_pos = y_cursor + dy * 2;
+            for (dx, ch) in line.chars().enumerate() {
+                let fg = color_per_col.get(dx).copied().unwrap_or(bg);
+
+                if ch != ' ' {
+                    rael.set_text(x + dx, y_pos, z, bg, fg, ch);
+                }
+            }
+        }
+
+        y_cursor += 8;
     }
 }

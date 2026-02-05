@@ -5,8 +5,8 @@ use crossterm::event::KeyModifiers;
 use rael::Color;
 use rael::ImageAsset;
 use rael::Rael;
-use tokio::time::Duration;
 use tokio::time::sleep;
+use tokio::time::Duration;
 
 use crate::assets;
 use crate::underterm::text::TextCommand;
@@ -45,7 +45,10 @@ pub async fn introduction(rael: &mut Rael) -> Map {
                 TextCommand::Text("Long ago, two races ruled over Earth: ".into()),
                 TextCommand::ColoredText("HUMANS ".into(), Color::new(255, 255, 100)),
                 TextCommand::Text("and ".into()),
-                TextCommand::ColoredText("MONSTERS.".into(), Color::new(255, 255, 100)),
+                TextCommand::ColoredText(
+                    "MONSTERS. and mraow mrp mrp".into(),
+                    Color::new(255, 255, 100),
+                ),
             ],
         },
         IntroScene {
@@ -93,14 +96,14 @@ pub async fn introduction(rael: &mut Rael) -> Map {
         IntroScene {
             image: Some(INTRO_5),
             text: vec![
-                TextCommand::Text(" ".to_string()),
+                TextCommand::ColoredText("M".to_string(), Color::new(0, 0, 0)),
                 TextCommand::Delay(Duration::from_secs(2)),
             ],
         },
         IntroScene {
             image: Some(INTRO_6),
             text: vec![
-                TextCommand::Text(" ".to_string()),
+                TextCommand::ColoredText("M".to_string(), Color::new(0, 0, 0)),
                 TextCommand::Delay(Duration::from_secs(2)),
             ],
         },
@@ -136,6 +139,7 @@ pub async fn introduction(rael: &mut Rael) -> Map {
                         (0, y as usize, 0),
                         Some((true, i == 4)),
                         "./src/underterm/default.flf",
+                        120,
                     );
 
                     let _ = rael.render(None).await;
@@ -191,6 +195,7 @@ pub async fn introduction(rael: &mut Rael) -> Map {
                     (0, y as usize, 0),
                     Some((true, i == 4)),
                     "./src/underterm/default.flf",
+                    120,
                 );
 
                 let _ = rael.render(Some(ii)).await;

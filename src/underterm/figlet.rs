@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use std::{fmt, fs};
 
 /// FIGlet font, which will hold the mapping from u32 code to FIGcharacter
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FIGfont {
     pub header_line: HeaderLine,
     pub comments: String,
@@ -337,7 +337,7 @@ impl FIGfont {
 /// the first line in FIGlet font, which you can find the documentation [`headerline`]
 ///
 /// [`headerline`]: http://www.jave.de/figlet/figfont.html#headerline
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HeaderLine {
     pub header_line: String,
 
@@ -436,7 +436,7 @@ impl TryFrom<&str> for HeaderLine {
 }
 
 /// the matched ascii art of one character
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FIGcharacter {
     pub code: u32,
     pub characters: Vec<String>,
@@ -451,7 +451,7 @@ impl fmt::Display for FIGcharacter {
 }
 
 /// the matched ascii arts of string literal
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FIGure<'a> {
     pub characters: Vec<&'a FIGcharacter>,
     pub height: u32,
