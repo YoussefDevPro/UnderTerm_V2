@@ -83,7 +83,7 @@ fn process_image_internal(
     println!("cargo:rerun-if-changed={}", input_path);
     let name = sanitize_name(output_name);
     let in_img = match image::open(input_path) {
-        Ok(img) => img,
+        Ok(img) => img.into_rgba8(),
         Err(e) => {
             eprintln!("Failed to open image '{}': {}", input_path, e);
             std::process::exit(1);

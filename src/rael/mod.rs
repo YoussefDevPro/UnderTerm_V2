@@ -164,7 +164,7 @@ impl Rael {
                 let tx = ox + x;
                 let color_index = image.pixels[y][x] as usize;
 
-                if color_index >= image.colors.len() - 1 {
+                if color_index >= image.colors.len() {
                     continue;
                 }
 
@@ -189,7 +189,7 @@ impl Rael {
 
                 if char_dirty || pixel_dirty {
                     self.dirty_rows[y / 128] |= 1u128 << (y % 128);
-                    break; // This terminal row is dirty; skip to next y
+                    break;
                 }
             }
         }

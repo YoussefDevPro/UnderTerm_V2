@@ -1,3 +1,4 @@
+use crate::underterm::fonts::Scenario;
 use crate::underterm::fonts::StyledText;
 use crate::underterm::text::*;
 use crossterm::event::KeyEvent;
@@ -13,7 +14,6 @@ use crate::underterm::text::TextCommand;
 use assets::*;
 
 mod fonts;
-use crate::underterm::fonts::set_figlet;
 
 mod figlet;
 mod text;
@@ -38,7 +38,7 @@ pub async fn check_if_we_should_exit_aah(rael: &Rael) -> bool {
 
 pub async fn introduction(rael: &mut Rael) -> Map {
     let center_w = (rael.widht / 2) - 60;
-    let intro_scenes: [IntroScene; 10] = [
+    let intro_scenes: [IntroScene; 9] = [
         IntroScene {
             image: Some(INTRO_1),
             text: vec![
@@ -78,14 +78,11 @@ pub async fn introduction(rael: &mut Rael) -> Map {
         },
         IntroScene {
             image: Some(INTRO_4),
-            text: vec![TextCommand::ColoredText(
-                "MT. EBOTT".into(),
-                Color::new(255, 255, 0),
-            )],
-        },
-        IntroScene {
-            image: Some(INTRO_4),
-            text: vec![TextCommand::Text("201X".into())],
+            text: vec![
+                TextCommand::ColoredText("MT. EBOTT".into(), Color::new(255, 255, 0)),
+                TextCommand::Delay(Duration::from_millis(300)),
+                TextCommand::Text(" | 201X".into()), // magic trick
+            ],
         },
         IntroScene {
             image: Some(INTRO_4),
@@ -117,7 +114,16 @@ pub async fn introduction(rael: &mut Rael) -> Map {
         if !should_exit {
             should_exit = check_if_we_should_exit_aah(rael).await;
         }
+        let mut scenario = Scenario::new(
+            Color::new(0, 0, 0),
+            (0, (rael.height as usize / 2) + 27, 0),
+            Some((true, i == 4)),
+            "./src/underterm/default.flf",
+            120,
+        );
+
         let mut writer = TextWriter::new(&scene.text);
+
         while !should_exit {
             match writer.next_step() {
                 WriterResult::Render(segments) => {
@@ -125,22 +131,13 @@ pub async fn introduction(rael: &mut Rael) -> Map {
                         should_exit = check_if_we_should_exit_aah(rael).await;
                     }
                     current_scene = segments.clone();
-                    rael.clear(); // Clear pixel/char buffers
+                    rael.clear();
 
                     if let Some(img) = scene.image {
                         rael.set_image(img, (center_w as usize, 1, 0));
                     }
 
-                    let y = (rael.height / 2) + 27;
-                    set_figlet(
-                        rael,
-                        &segments,
-                        Color::new(0, 0, 0),
-                        (0, y as usize, 0),
-                        Some((true, i == 4)),
-                        "./src/underterm/default.flf",
-                        120,
-                    );
+                    scenario.set_text(rael, &segments);
 
                     let _ = rael.render(None).await;
                     tokio::select! {
@@ -176,7 +173,7 @@ pub async fn introduction(rael: &mut Rael) -> Map {
                         }
                     };
                 }
-                WriterResult::Finished => break, // Move to next IntroScene
+                WriterResult::Finished => break,
             }
         }
         if should_exit {
@@ -186,24 +183,13 @@ pub async fn introduction(rael: &mut Rael) -> Map {
                 if let Some(img) = scene.image {
                     rael.set_image(img, (center_w as usize, 1, 0));
                 }
-
-                let y = (rael.height / 2) + 27;
-                set_figlet(
-                    rael,
-                    &current_scene,
-                    Color::new(0, 0, 0),
-                    (0, y as usize, 0),
-                    Some((true, i == 4)),
-                    "./src/underterm/default.flf",
-                    120,
-                );
-
+                scenario.set_text(rael, &current_scene);
                 let _ = rael.render(Some(ii)).await;
                 ii -= 0.1;
                 sleep(Duration::from_millis(30)).await;
             }
             rael.force_clear();
-            return Map::Menu; // Exit function after fade completes
+            return Map::Menu;
         }
         if !should_exit {
             sleep(Duration::from_secs(1)).await;
